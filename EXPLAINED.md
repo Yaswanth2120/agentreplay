@@ -596,3 +596,295 @@ complete LLM/tool consumption, and zero findings under the global socket guard.
 Calls the generator's CLI entry point with a temporary destination. Comparing
 both generated artifacts to the checked-in files verifies argument wiring without
 changing repository fixtures during the test.
+
+## M4 production functions
+
+### `replay.json_diff`
+Compares JSON recursively and returns added, removed, and changed paths using escaped
+JSON Pointer notation. Values become canonical previews capped at 200 characters,
+and type checks distinguish integer and floating-point values.
+
+### `Replayer.remaining_seqs`
+Returns pending exchange sequence numbers in recorded order. Finalization uses this
+snapshot to describe leftovers without exposing or mutating the pending list.
+
+### `Replayer.miss_evidence`
+Selects the exchange at the attempted position or the closest recorded message count,
+then compares its request to the incoming request. It considers consumed exchanges too,
+because their requests can still explain an extra or changed call.
+
+### `Replayer.next` (expanded)
+Consumes the earliest hash match and records strict out-of-order match metadata.
+A miss leaves pending events intact and raises ReplayMiss with structured evidence;
+lenient matches never record order warnings.
+
+### `ReplayMiss.__init__` (expanded)
+Keeps the existing hash/mode/remaining exception interface and adds structured evidence.
+This lets the HTTP boundary retain its 409 response while the session persists details.
+
+### `ToolReplayer.remaining_seqs`
+Returns unused tool sequence numbers without changing consumption. Replay finish can
+therefore identify missing tool executions alongside missing LLM exchanges.
+
+### `ReplaySession.__init__`
+Validates an existing unfinished replay run and loads independent LLM/tool matchers
+for its trace. A shared reentrant lock lets one run serialize matching and finish
+without sharing consumption with another run.
+
+### `ReplaySession._ensure_open`
+Checks the persisted run is present and unfinished before replay operations.
+Reading persisted state also detects a run finalized through another lifecycle path.
+
+### `ReplaySession.finding`
+Builds and persists a finding for the session's run with an injected timestamp.
+Centralizing this step keeps order, miss, and stream-warning evidence consistent.
+
+### `ReplaySession.next_exchange`
+Matches under the session lock and stores miss evidence before re-raising ReplayMiss.
+Successful out-of-order strict matches produce a warning while still serving the
+recorded response, allowing the checker to decide the regression verdict separately.
+
+### `ReplaySession.next_tool`
+Consumes a matching tool event under the same run lock and tracks attempted positions.
+A miss persists the name, argument hash, remaining count, and tool sequence before
+raising the existing specific ToolReplayMiss exception.
+
+### `ReplaySession.finish`
+Collects all unused exchange/tool sequences into one leftover finding and finalizes
+the run through the store. Both the finding and run outcome commit together, and a
+closed run cannot be finished or consumed again.
+
+### `TraceStore._insert_finding`
+Inserts a finding with canonical evidence without starting its own transaction.
+Normal finding writes and atomic finish-with-leftovers can share this serialization.
+
+### `TraceStore.finish_run` (expanded)
+Finalizes the row and optionally inserts same-run findings inside one transaction.
+It rejects findings for another run, so an invalid finish batch rolls back the run
+update rather than leaving a misleading completed execution.
+
+### `RunManager.__init__`
+Keeps the proxy mode, shared store/clock, per-run sessions, active-request counts,
+and a registry lock. Keeping this orchestration outside the store avoids putting
+replay business logic into SQL storage code.
+
+### `RunManager.get_run`
+Resolves a persisted run and checks unfinished state and proxy-mode compatibility.
+The proxy uses these checks for both startup defaults and explicit request headers.
+
+### `RunManager.session`
+Lazily creates or returns the one replay session assigned to a run ID.
+Using the registry lock prevents two concurrent requests from constructing separate
+consumption lists for the same run.
+
+### `RunManager.begin`
+Validates a run and increments its active-request count under the registry lock.
+This prevents the finish endpoint from completing a run while HTTP work is underway.
+
+### `RunManager.end`
+Releases one active request under the same lock. Streaming calls invoke it only
+after response cleanup, keeping unfinished capture protected from premature finish.
+
+### `RunManager.finish`
+Rejects busy/closed/incompatible runs, then delegates replay completion to its session
+or normal recording completion to the store. This gives HTTP control-plane calls
+and context-managed execution the same lifecycle rules.
+
+### `RunRecorder.__enter__` and `__exit__` (expanded)
+Replay contexts now create a session or share the supplied manager's session and
+check leftovers at exit. Manager-backed contexts also use its in-flight guard,
+while retaining original exceptions and the completed/agent_error/aborted outcomes.
+
+### `ToolRecorder.__init__` and `call` (expanded)
+Replay tools now use a validated shared session, or create their own persisted
+replay run/session when none is supplied. Calls consume through that session so
+misses become findings and finish can account for unused tool events.
+
+### `ClosingStreamingResponse.__init__`
+Builds an SSE response with an optional asynchronous cleanup callback.
+The callback can close an already-open upstream response even if downstream headers
+fail before the capture iterator starts.
+
+### `ClosingStreamingResponse.__call__`
+Runs normal streaming delivery and explicitly closes its iterator in finally.
+It then invokes cleanup even on a disconnect, ensuring capture and upstream resources
+are closed before the run's active-request count is released.
+
+### `create_app.record_response`
+Contains the existing upstream capture path but uses the routed run's trace for
+sequence allocation and persistence. Separating it from header/lifetime routing
+keeps streamed and JSON record behavior consistent across multiple runs.
+
+### `create_app.chat` and `finish_stream` (expanded)
+The endpoint selects the header/default run, marks it active, and routes to recording
+or that run's replay session. Its nested cleanup closes upstream and releases the
+run for streaming responses; JSON responses release the run before returning.
+
+### `create_app.create_run`
+Validates a typed request, existing trace, and compatible run kind before creating
+a run with injected start time. It returns the run ID without eagerly consuming
+or modifying the recorded trace.
+
+### `create_app.finish_run`
+Delegates explicit completion to the manager and returns the persisted run plus
+findings. Invalid or busy runs return a clear 400 response instead of being finalized.
+
+### `checks.load_agent`
+Imports MODULE:CALLABLE and validates it can accept the provided client and recorder.
+Invalid references and signatures become configuration errors before any agent runs.
+
+### `checks.check_trace`
+Imports a golden into a fresh store, invokes the actual agent through an in-process
+replay proxy, and shares its session with tool replay. It always finalizes and closes
+resources; known errors become structured failures, while unexpected exceptions
+propagate after finalization rather than being hidden by a broad catch.
+
+### `checks.check_golden`
+Finds golden files, validates mode/agent configuration, checks every trace, and
+combines verdicts into a JSON-ready report. It scopes cwd module imports to the
+check execution so the installed CLI can load repository-local agents without
+permanently changing the search path.
+
+### `inspection.render_run_diff`
+Renders run metadata, persisted findings, and source-trace request differences by
+sequence as JSON. Labeling source comparisons explicitly avoids claiming replay
+recorded a complete second copy of incoming requests.
+
+## M4 test functions and helpers
+
+### `fixture_session`
+Creates two recorded exchanges and a tool event, then binds an unfinished replay
+run to them. An injected clock makes its finding and finish times predictable.
+
+### `test_json_diff_nested_arrays_keys_types_and_truncation`
+Checks pointer escaping, array additions/removals, scalar type changes, and preview
+length limits. Equal values must produce empty change lists.
+
+### `test_miss_is_persisted_with_nearest_exchange_diff_and_hash`
+Changes a recorded request and checks the exception evidence equals the persisted
+finding, including position, nearest exchange, hash, and paths. Pending consumption
+must remain unchanged after the miss.
+
+### `test_nearest_falls_back_to_message_count_even_after_consumption`
+Uses nonmatching sequence positions to exercise nearest-by-message-count selection,
+including a previously consumed exchange. An empty recording must still produce
+usable added-field evidence with no fabricated nearest exchange.
+
+### `test_order_warning_only_in_strict_mode`
+Reorders two matching requests and compares strict and lenient findings.
+Only strict mode may emit a warning with expected/actual sequence evidence.
+
+### `test_tool_miss_and_finish_cover_all_remaining_events`
+Calls an unknown tool, consumes one LLM exchange, and finishes the run with leftovers.
+It checks both remaining sequence lists, stored tool-miss evidence, duplicate-finish
+rejection, and rejection of further consumption.
+
+### `test_full_replay_finishes_without_leftover_findings`
+Consumes both exchanges and the tool event before finishing.
+The run must finalize at the injected time with no false leftover findings.
+
+### `test_context_detects_leftovers_on_exception_exit`
+Raises an agent error after consuming only part of a replay context.
+The original error propagates while the run and leftover finding are persisted.
+
+### `test_finalization_and_findings_are_one_transaction`
+Attempts to attach another run's finding during finish. It checks the invalid
+batch leaves the run unfinished with no inserted finding.
+
+### `test_sessions_reject_forged_runs_and_tool_binding`
+Checks a forged trace/run association, record-mode session, cross-trace tool session,
+and invalid replay mode fail explicitly. These guards protect per-run consumption
+from accidental sharing across incompatible configurations.
+
+### `seed_trace`
+Stores two requests whose answers identify their source trace. Concurrent routing
+tests can then prove the correct trace was served even when requests hash identically.
+
+### `test_concurrent_runs_same_and_different_traces_never_interfere`, `exercise`, and `consume`
+The helpers launch three run consumers together and interleave requests across
+identical and different source traces. Each must consume its full recording and
+finish cleanly while the startup run retains its independent state.
+
+### `test_control_finish_persists_misses_leftovers_and_rejects_closed_runs`
+Makes an HTTP replay miss and then finishes the run through the control endpoint.
+It verifies persisted evidence, leftover detection, outcome detail, and rejection
+of repeated finish or later requests without duplicate findings.
+
+### `test_run_errors_are_rejected`
+Exercises unknown headers, unknown traces, incompatible kinds, and invalid modes.
+Rejected requests must leave the default run's recorded exchanges unconsumed.
+
+### `test_record_routing_and_busy_run_cannot_finish`, `exercise`, and `GatedStream.__aiter__`
+The gated upstream pauses a stream so the test can attempt finish while it is active.
+The async exercise proves finish is rejected until capture ends and verifies the
+exchange was saved to the header-selected trace rather than the startup trace.
+
+### `test_run_context_shares_manager_consumption_and_finalizes`
+Runs HTTP replay under a manager-backed RunRecorder and routes with its run ID.
+It checks the context and proxy use the same session and finish without false leftovers.
+
+### `test_disconnect_closes_capture_before_releasing_run`, `exercise`, `receive`, and `send`
+The ASGI helpers simulate disconnects either before headers or during body delivery.
+The test checks upstream cleanup, captured partial data when delivery began, and
+successful explicit finish after the active request is released.
+
+### `EndlessStream.__aiter__` and `EndlessStream.aclose`
+The iterator emits one chunk and then waits indefinitely so disconnect cleanup is
+observable. The close method records resource release, ensuring the test cannot
+mistake delayed garbage collection for explicit response cleanup.
+
+### `changed_request`
+Sends a changed prompt through the supplied client and surfaces HTTP failures.
+It is a deliberate agent regression used to verify miss evidence and checker exit 1.
+
+### `changed_tool`
+Requests an undefined tool through the supplied recorder. A fail-fast fallback
+ensures the regression test never accidentally executes a real tool during replay.
+
+### `short_agent`
+Returns without making any calls. It demonstrates that an apparently successful
+agent return still fails a check when recorded environment events remain unused.
+
+### `reordered_agent`
+Requests two source exchanges in reverse order. This isolates strict-order regression
+behavior from request-hash mismatch and allows lenient mode to pass the same agent.
+
+### `test_unchanged_agent_passes_all_goldens_and_cli`
+Invokes the CLI with the actual minimal agent in both matching modes.
+Both source traces must complete with no findings and a passing JSON verdict.
+
+### `test_modified_agent_cli_exits_one_with_divergences`
+Runs changed-prompt, wrong-tool, and early-return agents through the CLI.
+Each must exit 1 and retain the expected divergence kinds in its report.
+
+### `test_order_warning_fails_strict_check_but_lenient_passes`
+Exports a two-exchange fixture and checks the reordered agent against it.
+The test proves warning severity does not hide strict-order regressions and lenient
+mode does not emit that warning.
+
+### `test_invalid_agent_reference_is_configuration_error`
+Checks malformed references, missing modules, and missing callables fail at load time.
+These are configuration errors rather than successful runs with no work performed.
+
+### `test_callable_validation_and_unexpected_errors_finalize` and `fail`
+The helper raises a custom exception outside the checker's known error tuple.
+The test also checks noncallable/bad-signature configuration, then reopens a file
+store to prove the custom error propagated only after agent_error and leftovers
+were persisted.
+
+### `test_repository_agent_import_scope_is_restored`
+Creates an agent module available only from a temporary working directory.
+Checking it verifies installed-CLI import behavior while asserting sys.path is restored.
+
+### `test_check_config_errors_have_exit_two`
+Exercises absent goldens, invalid modes, and malformed agent references through argparse.
+Each must produce a clear error and exit 2 rather than a regression verdict.
+
+### `test_check_library_rejects_bad_mode`
+Calls the library checker directly with an invalid mode. It ensures validation is
+not dependent on argparse's choices enforcement.
+
+### `test_diff_cli_includes_source_request_changes_and_findings`
+Creates runs on different source requests and persists a miss finding for one.
+The CLI report must expose both the source request diff and stored finding evidence,
+while unknown comparison IDs fail explicitly.

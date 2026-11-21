@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 
 import uvicorn
 
+from .checks import check_golden
 from .exportio import export_trace, import_trace
-from .inspection import render_list, render_trace
+from .inspection import render_list, render_run_diff, render_trace
 from .proxy import create_app
 from .store import TraceStore
 
@@ -35,12 +37,28 @@ def main(argv: list[str] | None = None) -> None:
             command.add_argument("--out", required=True)
         if name == "import":
             command.add_argument("--in", dest="input_path", required=True)
+    command = sub.add_parser("diff")
+    command.add_argument("--db", default="traces.db")
+    command.add_argument("--run-a", required=True)
+    command.add_argument("--run-b", required=True)
+    command = sub.add_parser("check")
+    command.add_argument("--golden", required=True)
+    command.add_argument("--agent", required=True)
+    command.add_argument("--mode", choices=["strict", "lenient"], default="strict")
     args = parser.parse_args(argv)
     store = None
     try:
+        if args.cmd == "check":
+            result = check_golden(args.golden, args.agent, args.mode)
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
+            if not result["passed"]:
+                raise SystemExit(1)
+            return
         store = TraceStore(args.db)
         if args.cmd == "list":
             print(render_list(store))
+        elif args.cmd == "diff":
+            print(render_run_diff(store, args.run_a, args.run_b))
         elif args.cmd == "show":
             print(render_trace(store, args.trace_id))
         elif args.cmd == "export":
@@ -57,7 +75,7 @@ def main(argv: list[str] | None = None) -> None:
             )
             print(f"trace_id={app.state.trace_id}")
             uvicorn.run(app, host="127.0.0.1", port=args.port)
-    except (ValueError, OSError, sqlite3.Error) as error:
+    except (ValueError, TypeError, OSError, sqlite3.Error) as error:
         parser.error(str(error))
     finally:
         if store is not None:

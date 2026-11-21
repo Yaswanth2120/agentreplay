@@ -13,6 +13,7 @@ Single source of truth for the project. Save as `AGENTS.md` in the repo root. Re
 5. Flag problems in existing code; do not fix them outside the milestone's scope.
 6. Do not add dependencies beyond section 13's approved list without asking.
 7. The owner must be able to explain every line in an interview. Small functions, plain names, no clever abstractions, comments only for non-obvious "why". Do not claim anything works that you have not run.
+8. Start new work on a dedicated `feature/...` or `branch/...` branch. Commit and push verified milestone work on that branch and open a pull request for review.
 
 ---
 
