@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from .replay import json_diff
 from .store import TraceStore
 
 
@@ -54,3 +55,32 @@ def render_trace(store: TraceStore, trace_id: str) -> str:
                 )
             )
     return "\n".join(lines)
+
+
+def render_run_diff(store: TraceStore, run_a: str, run_b: str) -> str:
+    first, second = store.get_run(run_a), store.get_run(run_b)
+    if first is None or second is None:
+        raise ValueError("both run IDs must exist")
+    before = {
+        exchange.seq: exchange.request for exchange in store.exchanges(first.trace_id)
+    }
+    after = {
+        exchange.seq: exchange.request for exchange in store.exchanges(second.trace_id)
+    }
+    changes = []
+    for seq in sorted(before.keys() | after.keys()):
+        diff = json_diff(before.get(seq), after.get(seq))
+        if any(diff.values()):
+            changes.append({"seq": seq, "diff": diff})
+    return json.dumps(
+        {
+            "run_a": first.model_dump(),
+            "run_b": second.model_dump(),
+            "source_request_diffs": changes,
+            "findings_a": [finding.model_dump() for finding in store.findings(run_a)],
+            "findings_b": [finding.model_dump() for finding in store.findings(run_b)],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        indent=2,
+    )

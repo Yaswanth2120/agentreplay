@@ -144,3 +144,23 @@ class ToolRecord(ToolEvent):
     type: Literal["tool_event"]
     seq: int = Field(ge=0)
     latency_ms: float = Field(ge=0)
+
+
+class CreateRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    trace_id: str | None = None
+    kind: Literal["record", "live", "replay"] | None = None
+    replay_mode: ReplayMode | None = None
+    task_id: str | None = None
+    trial: int | None = None
+    agent_name: str | None = None
+    agent_version: str | None = None
+    model: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class FinishRunRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    outcome: RunOutcome = "completed"
+    task_success: bool | None = None
+    detail: str | None = None

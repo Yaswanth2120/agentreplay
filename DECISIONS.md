@@ -203,3 +203,86 @@
   through import/list/show/export against a temporary database, and its export
   matched the original golden bytes. The existing HTTPX TestClient deprecation
   warning is unchanged.
+
+## M4 — replay regression engine and feature-branch workflow (2026-11-21)
+
+- **Owner workflow:** start new work on a `feature/...` or `branch/...` branch;
+  record that continuing instruction in AGENTS.md. This milestone uses
+  `feature/m4-replay-engine`, with one meaningful implementation commit and a
+  reviewable GitHub PR. GitHub achievements are not a completion criterion; use
+  normal project work without fabricated activity or guaranteed award claims.
+- **No schema bump:** all persisted fields already exist in schema v4. The new
+  strict Pydantic models describe control-plane payloads only; no stored rows or
+  golden export format change, and existing fixtures still regenerate identically.
+- **Session boundary:** `ReplaySession` owns one run's LLM and tool matchers plus
+  its lock, finding persistence, and finalization. Validate it against the persisted
+  unfinished run before loading its trace. Keep low-level matching and JSON diff
+  in replay.py, HTTP in proxy.py, SQL in store.py, lifecycle/registry in runs.py,
+  and offline checking in checks.py rather than putting logic in argparse.
+- **Nearest evidence:** count every attempted LLM request, even a miss. Prefer a
+  recorded exchange with that sequence, otherwise minimize absolute message-count
+  difference and then sequence. Search all recorded exchanges, including consumed
+  ones. Empty recordings use null nearest evidence and a diff from an empty object.
+  The finding includes request hash, attempted position, nearest ID/seq/request,
+  and JSON diff; a miss never consumes an event.
+- **Diff representation:** escaped JSON Pointer paths; arrays compare by index.
+  Emit added/removed/changed lists with canonical JSON value previews truncated to
+  200 characters, not unbounded values. Numeric types matter, so 0 and 0.0 differ.
+  Diff the full recorded/incoming requests for useful context, even though hashing
+  intentionally ignores nonsemantic fields such as `stream`.
+- **Order and tool evidence:** an exchange matching beyond the earliest pending
+  position emits `replay_order` warning in strict mode only. Tool misses store name,
+  argument hash, remaining count, and attempted tool sequence. Repeated identical
+  events still consume earliest recorded matches. Do not invent tool-order warnings;
+  section 6.3 specifies order detection for exchanges.
+- **Finish:** aggregate remaining exchange/tool sequences into one error-severity
+  `replay_leftover` finding. The run update and finish findings share one transaction;
+  duplicate finish is rejected before inserting findings. Errors and aborted runs
+  are also checked for leftovers. Other detectors cannot be invoked before their
+  M6 implementation; control-plane finish currently triggers replay checks only.
+- **Run routing:** one manager per proxy, with lazy sessions keyed by run ID.
+  Accept same-mode runs stored in process, including context-created runs and record/
+  live runs on a recording proxy. Unknown/finished/incompatible runs fail with 400;
+  strict payload validation uses FastAPI's 422. Create requires an existing trace
+  and returns 201. The absent-header default remains the startup run.
+- **In-flight lifecycle:** count HTTP requests until their JSON response is ready
+  or their streaming response has completed/closed. Reject finish while busy.
+  ClosingStreamingResponse explicitly closes its iterator and runs final cleanup,
+  including if the client disconnects before headers or during data delivery.
+  Close upstream before releasing the run. A disconnect before capture begins can
+  leave a reserved sequence gap with no exchange; do not fabricate received chunks.
+- **Context/tool sharing:** optional `manager=...` on RunRecorder retrieves the same
+  session used by the proxy; standalone contexts own a session instead. Tools take
+  an optional shared session and reject another store/trace/record-mode binding.
+  Standalone replay recorders now create a persisted run/session so misses are
+  findings too; callers explicitly finish that session when complete. Separate
+  managers/processes do not coordinate consumption; share one session per run.
+- **Golden checker contract:** `(httpx_client, tool_recorder)` callable, optionally
+  async, imported through MODULE:CALLABLE. No separate user-supplied agent framework
+  or OpenAI SDK. Create a fresh in-memory store per trace and use the in-process
+  replay proxy with a shared tool session; no proxy network server is started.
+  Temporarily include cwd in sys.path for installed-CLI imports, restoring it even
+  on errors. Reject absent goldens, invalid modes, references, and signatures as
+  configuration errors rather than reporting success with n=0.
+- **Check exits and errors:** fail on any of the four divergence kinds, any error
+  severity finding, or agent failure; strict order warnings therefore fail but
+  stream_mismatch warnings alone do not. Expected HTTP/replay and standard agent
+  errors become JSON report details. Avoid a broad Exception catch: unknown custom
+  exceptions finalize the run in finally and propagate, failing the process without
+  a full JSON report. Normal outcomes remain separate from regression verdicts.
+- **Run comparison:** implement section 12's diff command alongside check. Compare
+  findings plus source-trace requests by sequence, labeling the latter explicitly;
+  replay stores findings rather than a new exchange log, so do not imply that the
+  comparison reconstructs all successful incoming replay requests.
+- **Verification:** 141 pytest cases pass with sockets blocked and Ruff passes.
+  Tests cover all four divergence kinds, nearest fallback, truncated pointer diffs,
+  concurrent runs on different and identical traces, busy/closed runs, stream
+  disconnects, context binding, strict vs lenient checks, and custom-error cleanup.
+  The installed CLI independently returns 0 for the minimal agent and 1 for a
+  temporary changed-prompt agent with replay_miss/leftover evidence. No new
+  dependencies or changes to existing expected acceptance behavior were needed.
+- **Remaining gaps:** missing health/model endpoints, valid non-object upstream JSON
+  handling, upstream auth configuration, and a real vLLM chunk fixture remain as
+  previously documented. CI/Python-version coverage remains M10. No fault plans,
+  M6 detectors, or live evaluation are claimed, and server shutdown still does not
+  infer an agent's completion; use explicit finish or RunRecorder.

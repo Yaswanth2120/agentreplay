@@ -239,6 +239,7 @@ class TraceStore:
         finished_at: float,
         task_success: bool | None = None,
         detail: str | None = None,
+        findings: list[Finding] | None = None,
     ) -> Run:
         with self._lock, self.conn:
             cursor = self.conn.execute(
@@ -248,6 +249,12 @@ class TraceStore:
             )
             if cursor.rowcount != 1:
                 raise ValueError(f"run {run_id!r} is unknown or already finished")
+            for finding in findings or []:
+                if finding.run_id != run_id:
+                    raise ValueError(
+                        "finish findings must belong to the run being finished"
+                    )
+                self._insert_finding(finding)
             return self._run_row(
                 self.conn.execute(
                     "SELECT * FROM runs WHERE id=?",
@@ -257,19 +264,22 @@ class TraceStore:
 
     def add_finding(self, finding: Finding) -> None:
         with self._lock, self.conn:
-            self.conn.execute(
-                "INSERT INTO findings VALUES (?,?,?,?,?,?,?,?)",
-                (
-                    finding.id,
-                    finding.run_id,
-                    finding.kind,
-                    finding.severity,
-                    finding.exchange_seq,
-                    finding.tool_seq,
-                    canonical_json(finding.evidence),
-                    finding.created_at,
-                ),
-            )
+            self._insert_finding(finding)
+
+    def _insert_finding(self, finding: Finding) -> None:
+        self.conn.execute(
+            "INSERT INTO findings VALUES (?,?,?,?,?,?,?,?)",
+            (
+                finding.id,
+                finding.run_id,
+                finding.kind,
+                finding.severity,
+                finding.exchange_seq,
+                finding.tool_seq,
+                canonical_json(finding.evidence),
+                finding.created_at,
+            ),
+        )
 
     def findings(self, run_id: str) -> list[Finding]:
         with self._lock:

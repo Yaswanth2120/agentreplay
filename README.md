@@ -29,7 +29,8 @@ agentreplay replay --trace-id <id> --mode strict --port 9000
 - [ ] Failure detector + labeled eval set (200 tasks x 3 trials)
 - [x] In-process Python tool capture/replay, decorator API, and minimal HTTPX agent (M2 offline tests)
 - [x] Run lifecycle, validated trace export/import, inspection CLI, and two offline golden traces (M3)
-- [ ] CI workflow and automated golden-check CLI
+- [x] Per-run replay, structured divergences, control endpoints, run diff, and offline golden-check CLI (M4)
+- [ ] CI workflow
 
 
 ## M1 verification
@@ -62,7 +63,7 @@ Replay can convert between streamed and non-streamed responses. Each conversion
 writes a `stream_mismatch` warning associated with the startup run; its ID is
 available as `app.state.run_id`, and warnings can be read through
 `TraceStore.findings(run_id)`. Run completion is available through `RunRecorder`, and `show` includes persisted
-runs and findings. Per-request run routing remains M4 work.
+runs and findings. Per-request run routing is available through `X-AgentReplay-Run` (see M4 below).
 
 The current schema v4 records a database-level version in `schema_meta`. Older/unversioned
 or newer databases raise `SchemaVersionError` when opened; use a new database
@@ -205,9 +206,10 @@ The context stores configuration on entry and finalizes once on exit: normal
 return is `completed`, an agent exception is `agent_error`, and an interrupt or
 process exit is `aborted`. It preserves the original exception. Task success is
 separate: a completed agent may still fail its task. The context does not create
-a trace or own the database connection. The proxy still creates its own startup
-run; M3 does not infer an agent's outcome from server shutdown or connect context
-runs to HTTP headers. Explicit default-run control and routing are M4 work.
+a trace or own the database connection. The proxy creates a default startup run. To share context-managed replay state
+with HTTP requests, pass `manager=app.state.runs` to `RunRecorder` and route those
+requests with `X-AgentReplay-Run: <run.id>`. Server shutdown does not infer an
+agent's outcome; finish the run explicitly.
 
 The two fixtures in `tests/golden/` were produced by the actual minimal agent
 against an HTTPX mock upstream. One records one add call; the other records two
@@ -225,4 +227,88 @@ Tests regenerate the fixtures twice, compare them to the checked-in bytes, and
 replay both with the unmodified agent while real tool execution and socket
 connections are blocked. M3 verification: 105 tests passed and `ruff check .`
 passed on local Python 3.14. The existing TestClient deprecation warning remains.
-M4 will add the `check` command and structured divergence reporting.
+The `check` command and structured divergence reporting are described below.
+
+
+## M4: offline regression checks and run routing
+
+Run the actual minimal agent against both golden traces without a server or GPU:
+
+```bash
+agentreplay check --golden tests/golden --agent examples.minimal_agent:run_agent
+agentreplay check --golden tests/golden --agent examples.minimal_agent:run_agent --mode lenient
+```
+
+Run from the repository root after installing the package. The agent reference is
+`MODULE:CALLABLE`; the callable receives `(httpx_client, tool_recorder)` and can
+return a value or an awaitable. The checker temporarily adds the working directory
+to the module search path, then restores it, so repository-local agents work with
+the installed executable. It creates a fresh in-memory DB per golden file, runs
+the callable through the replay proxy, shares its session with the tool recorder,
+and finalizes the run before writing a JSON report to stdout.
+
+Exit codes are 0 for all checks passing, 1 for any replay divergence or error-severity
+finding (or agent failure), and 2 for usage/configuration errors. Strict order
+warnings count as regressions; lenient mode never emits them. Stream-format mismatch
+warnings alone do not fail a check. The JSON report includes per-trace outcomes,
+findings, nearest recorded requests, hashes, and request diffs. Known HTTP/replay/
+standard agent errors become structured failures; an unexpected custom exception
+still finalizes its run and then propagates, producing a failed process rather
+than a misleading passing report. Unchanged-agent exit 0 and changed-prompt exit 1
+were verified using the installed CLI as well as pytest.
+
+Divergence findings are `replay_miss`, `tool_replay_miss`, `replay_order`, and
+`replay_leftover`. A miss preserves pending recordings and returns HTTP 409 for
+LLM requests or raises `ToolReplayMiss` for tools. Request evidence selects the
+recorded exchange with the attempted sequence position, otherwise the closest
+message count (lower sequence wins ties), including already-consumed recordings.
+Diffs use escaped JSON Pointer paths with added/removed/changed values previewed
+at at most 200 characters. At finish, one leftover finding lists all unused
+exchange/tool sequences. Its insertion and run finalization share a transaction.
+
+The proxy supports:
+
+- `POST /_agentreplay/runs` with JSON such as
+  `{"trace_id":"minimal-add","kind":"replay","replay_mode":"strict"}`.
+  It returns HTTP 201 with `run_id`. Omitted fields use the proxy's defaults;
+  trace IDs must already exist in its store.
+- `POST /v1/chat/completions` with `X-AgentReplay-Run: <run_id>` routes to that run.
+  Without the header, it uses the startup run. Unknown, finished, or incompatible
+  run IDs return HTTP 400. Each run has independent replay consumption, including
+  concurrent runs of the same trace.
+- `POST /_agentreplay/runs/{run_id}/finish` accepts, for example,
+  `{"outcome":"completed","task_success":true}` and returns the finished run
+  and findings. It rejects repeat finishes and requests still in flight. Streaming
+  requests stay active until completion or disconnect cleanup. Finish currently
+  performs replay checks; the other failure detectors remain M6 work.
+
+For tools in the same process, obtain `session = app.state.runs.session(run_id)`
+and pass `session=session` to `ToolRecorder(store, trace_id, "replay", ...)`.
+For a context-managed run, pass `manager=app.state.runs` to `RunRecorder` and use
+`context.replay` for the tool recorder. Standalone replay tool recorders create
+their own persisted run/session, accessible as `recorder.session`; call its
+`finish("completed")` when done. A standalone replay `RunRecorder` creates its
+own session at `context.replay` and checks leftovers on exit. Use one manager and
+shared session per run; separate proxy processes do not coordinate consumption.
+
+Compare two persisted runs:
+
+```bash
+agentreplay diff --db traces.db --run-a RUN_A --run-b RUN_B
+```
+
+The JSON comparison includes both runs, their findings (including miss evidence),
+and differences between requests in their source traces by sequence. Replay does
+not record a second copy of successful incoming requests; this command labels its
+request comparison `source_request_diffs` accordingly.
+
+M4 verification: 141 tests passed with socket connections disabled and Ruff passed
+on local Python 3.14. Coverage includes concurrent same/different-trace runs,
+strict/lenient order behavior, full miss evidence, atomic leftovers, check exit
+codes, context/session sharing, and stream disconnect cleanup. The existing
+TestClient deprecation warning remains. Schema v4 and golden artifact bytes are
+unchanged. Live vLLM fixtures, the Python CI matrix, and the previously noted
+health/model endpoints remain unfinished outside this milestone.
+
+Development now uses dedicated feature branches and GitHub pull requests. M4 is
+on `feature/m4-replay-engine`; local checks run before committing and publishing.
