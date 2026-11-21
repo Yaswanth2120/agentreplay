@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentreplay"
+version = "0.0.1"
+description = "Record and deterministically replay AI agent LLM/tool traffic for regression testing."
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.5",
+    "fastapi>=0.110",
+    "httpx>=0.27",
+    "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff"]
+
+[project.scripts]
+agentreplay = "agentreplay.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
