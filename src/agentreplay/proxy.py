@@ -102,6 +102,11 @@ def create_app(
     run = store.create_run(
         Run(
             kind=mode,
+            task_id=(run_config or {}).get("task_id"),
+            trial=(run_config or {}).get("trial"),
+            agent_name=(run_config or {}).get("agent_name"),
+            agent_version=(run_config or {}).get("agent_version"),
+            model=(run_config or {}).get("model"),
             trace_id=trace_id,
             replay_mode=replay_mode if mode == "replay" else None,
             started_at=wall_clock(),

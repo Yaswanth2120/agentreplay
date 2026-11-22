@@ -472,3 +472,70 @@
 M7 final verification: 603 tests passed, including all 200 scripted solutions;
 Ruff and git diff checks passed. The clean wheel loaded 200 tasks, 500 documents,
 and its pending review template. Existing TestClient deprecation warning remains.
+
+
+## M8 — 2026-11-22
+
+- Stack `feature/m8-eval-harness` on the still-open M7 branch. Do not merge M6/M7
+  merely because the owner said Next; create a separate reviewable M8 PR.
+- Add schema-v7 evaluation_results for durable final answers/state plus the
+  specified eval_labels table absent from the earlier store. Run completion,
+  observed snapshots, task_failure/detector/replay findings, and results commit
+  together. Reject older databases; regenerate golden version headers only.
+- Normalize startup run metadata from known run_config fields so the harness's
+  task/trial/agent/model identities exist in both the run row and config. Preserve
+  the existing control-plane and standalone APIs with optional result parameters.
+- Move reference-agent implementation into evals.agent and preserve the example's
+  exported interface. Installed package CLI must not import an unpackaged example.
+- Keep harness orchestration separate from pure stats and report rendering. Use a
+  clearly labeled scripted backend by default and injectable transports; live mode
+  requires explicit model/vLLM version and is only exercised with a fake transport.
+- Record every configured task/trial/version, replay each twice unchanged, replay
+  v1 traces against v2, and optionally fault only successful finding-free v1 sources.
+  M8's committed configuration uses 20 tasks ×3×2 (120 sources, 480 total runs).
+  Full 200×3 live runs remain M9. Sampling remains .7/trial as specified.
+- Reconstruct virtual replay state independently from consumed original successful
+  tool actions, preserving consumption order. Do not execute the recorder callback.
+  The five environments validate before mutation, so original failures are no-ops;
+  injected post-execution errors retain real side effects. Missing prerequisites
+  become reconstruction errors and a failed verification. Do not generalize this
+  simulation to external tools. Persist actual/reconstructed provenance.
+- Emit task_failure based on verifier outcome, not agent exception or fault labels.
+  A state task can succeed even when a later error makes outcome=agent_error.
+  Infrastructure/cancellation failures finalize but leave success/result unknown,
+  making reports reject the incomplete cohort instead of claiming a measured result.
+- Filter clean FP sources by success and absence of findings, so intentional v2
+  task failures/natural errors are not mislabeled clean. Replay all sources twice
+  for determinism. Include normalized finding sets and verified outputs as well as
+  outcome; exclude identity/timestamp fields. Report all count units and correlation.
+- Score injected detector claims one-to-one by kind and the correct target namespace
+  and sequence, deduplicating identical claims. Manual presence labels are a
+  separate run/kind measurement; conflicts need adjudication. Do not pool them.
+- task_failure is run-level, so bad-result labels without localized verification
+  are disclosed as unscored for sequence-based detector P/R; preserve task-success
+  scoring and report unscored n. Assigning the injection sequence to a verifier
+  finding would leak ground truth and violate independence.
+- Use Wilson intervals for proportions; F1 is non-binomial, so derive conservative
+  harmonic bounds from Bonferroni-adjusted Wilson intervals rather than calling
+  2TP an independent success count. Undefined rates retain null/n=0. Bootstrap
+  paired task/trial observations with fixed seed (10,000 default); exact McNemar
+  reports discordant counts. These repeated observations have limited independence.
+- Cohort reports validate expected source/replay membership and shared metadata.
+  All metric calculations live in stats.py; renderer only formats values and
+  refuses missing n. Select the latest cohort by default or an explicit evaluation ID.
+- Label CLI displays observations without detector/verifier outputs, collects all
+  judgments before saving, and rejects injected runs. Owner hand review and 100
+  natural-run labels remain pending; never synthesize either from scripted results.
+- Preserve four pre-existing untracked duplicate files untouched and outside commits.
+  Existing TestClient deprecation remains; no new dependencies or real GPU calls.
+- First complete-run test incorrectly assumed broken v2 never produces a natural
+  tool error. Replace that new assertion with an exact source-vs-observed snapshot
+  comparison, retaining the no-error check for v1. All pre-existing tests retained.
+- Add Makefile offline/report commands and generate committed reports from a fresh
+  DB after committing implementation, so the recorded git SHA identifies the code.
+  A later report-artifact commit does not rewrite those generated numbers. Retry-safe
+  live resume, environment capture scripts, and rental guidance are M9 work.
+
+M8 verification: 658 tests passed, including 55 additional cases (one old-schema
+compatibility case). Ruff and diff checks passed; the clean wheel ran the packaged
+CLI through evaluation and mutable-state replay/reporting without an examples import.

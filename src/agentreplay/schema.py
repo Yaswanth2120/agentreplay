@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .canonical import LENIENT_KEYS, STRICT_KEYS, canonical_hash
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 EXPORT_FORMAT = "agentreplay.trace.v1"
 
 
@@ -238,3 +238,56 @@ class Task(BaseModel):
     seed: int = Field(ge=0)
     difficulty: int = Field(ge=1, le=3)
     verifier: TaskVerifier
+
+
+class EvaluationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    run_id: str
+    final_answer: str
+    final_state: dict[str, Any]
+    state_source: Literal["executed", "reconstructed"]
+    state_errors: list[str] = Field(default_factory=list)
+
+
+class EvaluationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    backend: Literal["scripted", "live"] = "scripted"
+    model: str = "scripted-offline"
+    upstream_url: str = "http://localhost:8000"
+    versions: list[Literal["v1", "v2"]] = Field(default_factory=lambda: ["v1", "v2"])
+    trials: int = Field(default=3, ge=3)
+    task_ids: list[str] | None = None
+    max_steps: int = Field(default=25, ge=1)
+    regression_seed: int = 7
+    bootstrap_seed: int = 1234
+    bootstrap_resamples: int = Field(default=10000, ge=100)
+    fault_plan: dict[str, Any] | None = None
+    vllm_version: str = "not-used-scripted"
+    vllm_flags: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_selection(self) -> EvaluationConfig:
+        if not self.versions or len(set(self.versions)) != len(self.versions):
+            raise ValueError("versions must be nonempty and unique")
+        if self.task_ids is not None and (
+            not self.task_ids or len(set(self.task_ids)) != len(self.task_ids)
+        ):
+            raise ValueError("task_ids must be nonempty and unique")
+        if self.fault_plan is not None and "v1" not in self.versions:
+            raise ValueError("fault replay needs a v1 source")
+        if self.backend == "live" and (
+            self.model == "scripted-offline" or self.vllm_version == "not-used-scripted"
+        ):
+            raise ValueError("live evaluation requires explicit model and vLLM version")
+        return self
+
+
+class EvalLabel(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    run_id: str
+    kind: Literal["loop", "invalid_tool_call", "timeout"]
+    present: bool
+    seq: int | None = Field(default=None, ge=0)
+    labeler: str = Field(min_length=1)
+    created_at: float

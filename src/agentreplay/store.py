@@ -10,6 +10,8 @@ from pathlib import Path
 from .canonical import canonical_json
 from .schema import (
     SCHEMA_VERSION,
+    EvalLabel,
+    EvaluationResult,
     Exchange,
     Fault,
     Finding,
@@ -21,6 +23,15 @@ from .schema import (
 )
 
 DDL = """
+CREATE TABLE IF NOT EXISTS eval_labels (
+    id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL, present INTEGER NOT NULL, seq INTEGER,
+    labeler TEXT NOT NULL, created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS evaluation_results (
+    run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+    data TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS traces (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, schema_version INTEGER NOT NULL,
@@ -263,6 +274,7 @@ class TraceStore:
         detail: str | None = None,
         findings: list[Finding] | None = None,
         observations: RunObservations | None = None,
+        evaluation: EvaluationResult | None = None,
     ) -> Run:
         with self._lock, self.conn:
             cursor = self.conn.execute(
@@ -276,6 +288,13 @@ class TraceStore:
                 self.conn.execute(
                     "INSERT INTO run_observations VALUES (?,?)",
                     (run_id, canonical_json(observations.model_dump())),
+                )
+            if evaluation is not None:
+                if evaluation.run_id != run_id:
+                    raise ValueError("evaluation must belong to the finished run")
+                self.conn.execute(
+                    "INSERT INTO evaluation_results VALUES (?,?)",
+                    (run_id, canonical_json(evaluation.model_dump())),
                 )
             for finding in findings or []:
                 if finding.run_id != run_id:
@@ -458,3 +477,50 @@ class TraceStore:
             )
             for finding in findings:
                 self._insert_finding(finding)
+
+    def all_runs(self) -> list[Run]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM runs ORDER BY started_at, rowid"
+            ).fetchall()
+        return [self._run_row(row) for row in rows]
+
+    def get_evaluation(self, run_id: str) -> EvaluationResult | None:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT data FROM evaluation_results WHERE run_id=?", (run_id,)
+            ).fetchone()
+        return EvaluationResult.model_validate_json(row[0]) if row else None
+
+    def replace_labels(self, labels: list[EvalLabel]) -> None:
+        with self._lock, self.conn:
+            keys = [(label.run_id, label.kind, label.labeler) for label in labels]
+            if len(set(keys)) != len(keys):
+                raise ValueError("duplicate labels")
+            for label in labels:
+                self.conn.execute(
+                    "DELETE FROM eval_labels WHERE run_id=? AND kind=? AND labeler=?",
+                    (label.run_id, label.kind, label.labeler),
+                )
+                self.conn.execute(
+                    "INSERT INTO eval_labels VALUES (?,?,?,?,?,?,?)",
+                    (
+                        label.id,
+                        label.run_id,
+                        label.kind,
+                        int(label.present),
+                        label.seq,
+                        label.labeler,
+                        label.created_at,
+                    ),
+                )
+
+    def labels(self, run_id: str) -> list[EvalLabel]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM eval_labels WHERE run_id=? ORDER BY kind, labeler",
+                (run_id,),
+            ).fetchall()
+        return [
+            EvalLabel(**{**dict(row), "present": bool(row["present"])}) for row in rows
+        ]

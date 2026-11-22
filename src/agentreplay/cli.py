@@ -3,16 +3,20 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 
 import uvicorn
 
 from .checks import check_golden
 from .detection import detect_run
 from .evals.faults import evaluate_faults
+from .evals.harness import load_config, run_evaluation
+from .evals.labeling import blind_run, label_run
 from .exportio import export_trace, import_trace
 from .faults import FaultPlan
 from .inspection import render_list, render_run_diff, render_trace
 from .proxy import create_app
+from .report import write_report
 from .store import TraceStore
 
 
@@ -58,6 +62,17 @@ def main(argv: list[str] | None = None) -> None:
     command.add_argument("--db", default="traces.db")
     command.add_argument("--plan", required=True)
     command.add_argument("--trace-id")
+    command = evaluation_sub.add_parser("run")
+    command.add_argument("--db", default="traces.db")
+    command.add_argument("--config", required=True)
+    command = sub.add_parser("report")
+    command.add_argument("--db", default="traces.db")
+    command.add_argument("--out", default="reports")
+    command.add_argument("--evaluation-id")
+    command = sub.add_parser("label")
+    command.add_argument("--db", default="traces.db")
+    command.add_argument("--run-id", required=True)
+    command.add_argument("--labeler", default="owner")
     args = parser.parse_args(argv)
     store = None
     try:
@@ -80,8 +95,26 @@ def main(argv: list[str] | None = None) -> None:
                     indent=2,
                 )
             )
+        elif args.cmd == "report":
+            result = write_report(store, args.out, args.evaluation_id)
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
+        elif args.cmd == "label":
+            print(
+                json.dumps(blind_run(store, args.run_id), ensure_ascii=False, indent=2),
+                file=sys.stderr,
+            )
+            labels = label_run(store, args.run_id, labeler=args.labeler, ask=input)
+            print(
+                json.dumps(
+                    [label.model_dump() for label in labels], sort_keys=True, indent=2
+                )
+            )
         elif args.cmd == "eval":
-            result = evaluate_faults(store, FaultPlan.load(args.plan), args.trace_id)
+            result = (
+                run_evaluation(store, load_config(args.config))
+                if args.eval_cmd == "run"
+                else evaluate_faults(store, FaultPlan.load(args.plan), args.trace_id)
+            )
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
         elif args.cmd == "list":
             print(render_list(store))

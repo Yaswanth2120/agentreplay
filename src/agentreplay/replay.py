@@ -17,6 +17,7 @@ from .canonical import (
 from .detection import finish_run
 from .fault_runtime import FaultRuntime
 from .schema import (
+    EvaluationResult,
     Exchange,
     Finding,
     ReplayMode,
@@ -285,11 +286,13 @@ class ReplaySession:
         *,
         task_success: bool | None = None,
         detail: str | None = None,
+        findings: list[Finding] | None = None,
+        evaluation: EvaluationResult | None = None,
     ) -> Run:
         with self._lock:
             self._ensure_open()
             exchanges, tools = self.replayer.remaining_seqs, self.tools.remaining_seqs
-            findings = []
+            findings = list(findings or [])
             if exchanges or tools:
                 findings.append(
                     Finding(
@@ -310,6 +313,7 @@ class ReplaySession:
                 task_success=task_success,
                 detail=detail,
                 findings=findings,
+                evaluation=evaluation,
                 observations=RunObservations(
                     exchanges=self.faults.observed_exchanges,
                     tool_events=self.faults.observed_tools,
