@@ -1450,3 +1450,394 @@ Raises if the test accesses a forbidden source of state. This makes detector pur
 ### `tests/integration/test_detection.py` — `fail`
 
 Raises a natural tool exception without any injection plan. The integration test proves detection works on actual observed failures.
+
+
+## M7: deterministic environments, task contracts, and reference agent
+
+### `src/agentreplay/evals/envs/tickets.py` — `__init__`
+
+Creates a fresh environment and initializes its seeded fixture. Each instance owns its state so tasks and trials cannot interfere.
+
+### `src/agentreplay/evals/envs/tickets.py` — `reset`
+
+Restores the initial fixture for the supplied seed. Repeating the same seed makes the starting state reproducible.
+
+### `src/agentreplay/evals/envs/tickets.py` — `snapshot`
+
+Returns detached JSON state for independent final-state checks. Returning a copy prevents verification or callers from mutating the live environment.
+
+### `src/agentreplay/evals/envs/tickets.py` — `create`
+
+Allocates the next sequential ticket ID with open status and no assignee. It stores and returns separate records so caller changes cannot bypass business rules.
+
+### `src/agentreplay/evals/envs/tickets.py` — `update`
+
+Validates existence, assignment, and forward-only status transitions on a candidate copy. The stored ticket changes only after all checks pass, and resolved tickets stay immutable.
+
+### `src/agentreplay/evals/envs/tickets.py` — `query`
+
+Returns detached ticket records in ID order with an optional status filter. Stable ordering and copies make query observations safe for replay.
+
+### `src/agentreplay/evals/envs/files.py` — `safe_path`
+
+Accepts normalized relative POSIX paths and rejects traversal, absolute paths, backslashes, empty parts, and null bytes. The paths remain virtual and never reach host file operations.
+
+### `src/agentreplay/evals/envs/files.py` — `__init__`
+
+Creates a fresh environment and initializes its seeded fixture. Each instance owns its state so tasks and trials cannot interfere.
+
+### `src/agentreplay/evals/envs/files.py` — `reset`
+
+Restores the initial fixture for the supplied seed. Repeating the same seed makes the starting state reproducible.
+
+### `src/agentreplay/evals/envs/files.py` — `snapshot`
+
+Returns detached JSON state for independent final-state checks. Returning a copy prevents verification or callers from mutating the live environment.
+
+### `src/agentreplay/evals/envs/files.py` — `read`
+
+Returns the exact virtual file content or raises a missing-file error. Reads never create implicit files.
+
+### `src/agentreplay/evals/envs/files.py` — `write`
+
+Creates or replaces text after validating the virtual path and directory conflicts. Conflict checks occur before changing the file mapping.
+
+### `src/agentreplay/evals/envs/files.py` — `list`
+
+Returns keys or virtual paths in sorted order. Stable ordering keeps tool observations and replay requests reproducible.
+
+### `src/agentreplay/evals/envs/files.py` — `grep`
+
+Searches literal case-sensitive text in sorted files and reports one-based line positions. Literal matching avoids regex surprises and makes observations stable.
+
+### `src/agentreplay/evals/envs/__init__.py` — `make_environment`
+
+Selects a known local environment and creates a fresh seeded instance. Unknown names fail clearly rather than importing arbitrary plugins.
+
+### `src/agentreplay/evals/envs/kv.py` — `__init__`
+
+Creates a fresh environment and initializes its seeded fixture. Each instance owns its state so tasks and trials cannot interfere.
+
+### `src/agentreplay/evals/envs/kv.py` — `reset`
+
+Restores the initial fixture for the supplied seed. Repeating the same seed makes the starting state reproducible.
+
+### `src/agentreplay/evals/envs/kv.py` — `snapshot`
+
+Returns detached JSON state for independent final-state checks. Returning a copy prevents verification or callers from mutating the live environment.
+
+### `src/agentreplay/evals/envs/kv.py` — `get`
+
+Returns a detached stored JSON value or a recoverable missing-key error. Stored null is distinguishable from a missing key.
+
+### `src/agentreplay/evals/envs/kv.py` — `set`
+
+Stores a copied JSON value and returns a separate copy. Changing arguments or results after the call cannot change stored state.
+
+### `src/agentreplay/evals/envs/kv.py` — `delete`
+
+Removes an existing key and reports success. Missing keys raise so an agent cannot mistake a failed deletion for an applied operation.
+
+### `src/agentreplay/evals/envs/kv.py` — `list`
+
+Returns keys or virtual paths in sorted order. Stable ordering keeps tool observations and replay requests reproducible.
+
+### `src/agentreplay/evals/envs/calc.py` — `__init__`
+
+Creates a fresh environment and initializes its seeded fixture. Each instance owns its state so tasks and trials cannot interfere.
+
+### `src/agentreplay/evals/envs/calc.py` — `reset`
+
+Restores the initial fixture for the supplied seed. Repeating the same seed makes the starting state reproducible.
+
+### `src/agentreplay/evals/envs/calc.py` — `snapshot`
+
+Returns detached JSON state for independent final-state checks. Returning a copy prevents verification or callers from mutating the live environment.
+
+### `src/agentreplay/evals/envs/calc.py` — `calculate`
+
+Applies one of four finite arithmetic operations and checks division by zero and overflow. Errors are recoverable environment errors instead of invalid JSON results.
+
+### `src/agentreplay/evals/envs/calc.py` — `convert`
+
+Converts values using explicit base-unit factors for compatible dimensions. Unknown units, cross-dimension conversions, and non-finite results are rejected.
+
+### `src/agentreplay/evals/envs/search.py` — `tokens`
+
+Extracts lowercase ASCII alphanumeric query tokens into a set. This defines an explicit deterministic matching rule instead of relying on an external search service.
+
+### `src/agentreplay/evals/envs/search.py` — `__init__`
+
+Loads the packaged corpus and verifies its 500 unique document IDs before initializing the environment. The corpus is checked in rather than fetched at runtime.
+
+### `src/agentreplay/evals/envs/search.py` — `reset`
+
+Records the task seed without changing the fixed corpus. Search is intentionally immutable, so resetting cannot silently change its evidence.
+
+### `src/agentreplay/evals/envs/search.py` — `snapshot`
+
+Returns detached JSON state for independent final-state checks. Returning a copy prevents verification or callers from mutating the live environment.
+
+### `src/agentreplay/evals/envs/search.py` — `search`
+
+Returns documents containing every query token, sorted by ID and bounded by the requested limit. Results are copied and punctuation-only queries fail explicitly.
+
+### `src/agentreplay/evals/envs/search.py` — `get_document`
+
+Looks up a fixed document by ID and returns a detached copy. An unknown ID raises instead of fabricating evidence.
+
+### `src/agentreplay/evals/envs/base.py` — `tool_schema`
+
+Builds an OpenAI-compatible function declaration with required fields and no extra arguments. All environments use the same strict contract shape.
+
+### `src/agentreplay/evals/envs/base.py` — `tools`
+
+Returns a deep copy of the environment tool definitions. A caller cannot change schemas for other tasks or instances.
+
+### `src/agentreplay/evals/envs/base.py` — `call`
+
+Finds the declared tool, rejects non-JSON/non-finite values, validates its arguments, and dispatches a detached copy. Invalid operations fail before they can mutate state.
+
+### `src/agentreplay/evals/envs/base.py` — `snapshot`
+
+Defines the final-state contract that concrete environments implement. The base raises rather than pretending an empty state is a valid implementation.
+
+### `src/agentreplay/evals/envs/base.py` — `reset`
+
+Defines the seeded fixture lifecycle for concrete environments. Missing implementations raise explicitly instead of silently retaining prior state.
+
+### `src/agentreplay/evals/envs/base.py` — `state_digest`
+
+Hashes canonical snapshot JSON with SHA256. Identical states receive identical fingerprints without consulting any external clock or service.
+
+### `src/agentreplay/evals/tasks.py` — `load_tasks`
+
+Parses typed JSONL tasks and rejects malformed lines, empty files, and duplicate IDs. Errors include the line number so frozen data problems are easy to inspect.
+
+### `src/agentreplay/evals/tasks.py` — `tasks_version`
+
+Fingerprints the exact task file bytes with a named version prefix. Later harness runs can distinguish any correction to the frozen task set.
+
+### `src/agentreplay/evals/make_tasks.py` — `make_corpus`
+
+Constructs 500 synthetic station documents with deterministic regional and system facts. Committing the output provides offline search evidence without any external dataset.
+
+### `src/agentreplay/evals/make_tasks.py` — `calc_task`
+
+Builds a visible arithmetic/conversion workflow and computes its goal with Decimal arithmetic. The generator does not call the environment implementation.
+
+### `src/agentreplay/evals/make_tasks.py` — `kv_task`
+
+Builds a key-value workflow and its expected final mapping, including fixture deletion in longer tasks. Other keys must remain unchanged at verification.
+
+### `src/agentreplay/evals/make_tasks.py` — `files_task`
+
+Constructs exact virtual file writes and an expected fixture-preserving final mapping. Each added write requires an observable state change.
+
+### `src/agentreplay/evals/make_tasks.py` — `search_task`
+
+Samples distinct stations and constructs ordered answer-code goals from fixed corpus facts. The visible instruction identifies stations but does not reveal the expected answer.
+
+### `src/agentreplay/evals/make_tasks.py` — `tickets_task`
+
+Builds open-ticket or complete resolution workflows and independently constructs their final records. Hard tasks require two resolved tickets rather than optional query calls.
+
+### `src/agentreplay/evals/make_tasks.py` — `generate_tasks`
+
+Creates exactly 40 tasks per environment with the fixed 16/16/8 difficulty split. A local seeded RNG and duplicate-instruction rejection make generation reproducible.
+
+### `src/agentreplay/evals/make_tasks.py` — `write_jsonl`
+
+Writes canonical JSON records with UTF-8 and one trailing newline per record. Byte-stable output is necessary for frozen task version hashes.
+
+### `src/agentreplay/evals/make_tasks.py` — `write_review`
+
+Selects four tasks per environment with a local seeded RNG and writes a pending owner review template. It does not fill in human solvability or verifier judgments.
+
+### `src/agentreplay/evals/make_tasks.py` — `main`
+
+Parses explicit output and seed options for task generation, with optional corpus and review outputs. Artifact creation stays separate from runtime loading.
+
+### `src/agentreplay/evals/verifiers.py` — `answer_object`
+
+Parses a strict JSON object while rejecting non-finite constants and malformed text. Plain prose and arrays cannot pass answer-based verification.
+
+### `src/agentreplay/evals/verifiers.py` — `verify`
+
+Checks independent goal contracts against final state or the final JSON answer. It compares exact typed state, ordered search codes, or finite numbers with a fixed absolute tolerance without running tools or reading fault labels.
+
+### `examples/reference_agent.py` — `execute_call`
+
+Parses tool arguments and executes through either the environment or injected recorder. Known tool and replay errors become explicit error messages that the model can use to recover.
+
+### `examples/reference_agent.py` — `invoke_environment`
+
+Adapts keyword tool arguments to the environment dispatcher for ToolRecorder. The same callable can record real execution while replay bypasses it entirely.
+
+### `examples/reference_agent.py` — `run_agent`
+
+Drives a bounded HTTPX chat loop using only task instructions and advertised tools. It executes calls in order, supports run routing and recorded tools, and applies the documented seeded skipped-call regression for v2.
+
+### `tests/test_eval_envs.py` — `test_environment_reset_digest_schema_and_isolation`
+
+Checks environment reset digest schema and isolation. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_unknown_environment`
+
+Checks unknown environment. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_calc_arithmetic`
+
+Checks calc arithmetic. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_calc_conversion`
+
+Checks calc conversion. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_calc_rejects_errors_and_preserves_state`
+
+Checks calc rejects errors and preserves state. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_calc_bad_units_and_nonfinite_conversion`
+
+Checks calc bad units and nonfinite conversion. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_kv_crud_aliasing_missing_null_and_reset`
+
+Checks kv crud aliasing missing null and reset. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_virtual_files_reject_unsafe_paths`
+
+Checks virtual files reject unsafe paths. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_files_read_write_list_grep_and_conflicts`
+
+Checks files read write list grep and conflicts. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_search_fixed_corpus_ranking_tokens_limits_and_aliasing`
+
+Checks search fixed corpus ranking tokens limits and aliasing. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_tickets_create_update_query_business_rules_and_reset`
+
+Checks tickets create update query business rules and reset. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_schema_rejections_never_mutate`
+
+Checks schema rejections never mutate. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_envs.py` — `test_non_json_tool_values_fail_without_corrupting_state`
+
+Checks non json tool values fail without corrupting state. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `scripted_solution`
+
+Executes the visible task workflow and derives answer values from observed tool results. Its wrong mode skips an operation or changes an answer without reading expected verifier goals.
+
+### `tests/test_eval_tasks.py` — `test_each_task_accepts_correct_and_rejects_wrong_scripted_trajectory`
+
+Checks each task accepts correct and rejects wrong scripted trajectory. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_task_generation_bytes_hash_counts_difficulty_and_frozen_version`
+
+Checks task generation bytes hash counts difficulty and frozen version. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_invalid_task_files_have_clear_errors`
+
+Checks invalid task files have clear errors. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_duplicate_ids_and_unknown_task_fields_rejected`
+
+Checks duplicate ids and unknown task fields rejected. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_numeric_answer_rejects_malformed_and_nonnumeric_values`
+
+Checks numeric answer rejects malformed and nonnumeric values. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_numeric_tolerance_and_state_types_are_explicit`
+
+Checks numeric tolerance and state types are explicit. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_verifier_configuration_errors_fail_clearly`
+
+Checks verifier configuration errors fail clearly. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_generation_cli_writes_reproducible_corpus_and_pending_review`
+
+Checks generation cli writes reproducible corpus and pending review. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_verifiers_do_not_import_solutions_environments_faults_or_detectors`
+
+Checks verifiers do not import solutions environments faults or detectors. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_task_generation_does_not_change_global_random_state`
+
+Checks task generation does not change global random state. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/test_eval_tasks.py` — `test_numeric_verifier_rejects_out_of_range_answers_without_overflow`
+
+Checks numeric verifier rejects out of range answers without overflow. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/integration/test_reference_agent.py` — `tool_call`
+
+Builds a valid fake model tool call with canonical arguments and a stable ID. Tests can then inspect request and tool-message ordering precisely.
+
+### `tests/integration/test_reference_agent.py` — `reply`
+
+Wraps a scripted message in a minimal OpenAI-compatible response. The finish reason follows whether the message contains tool calls.
+
+### `tests/integration/test_reference_agent.py` — `test_reference_agent_completes_each_environment_and_difficulty`
+
+Checks reference agent completes each environment and difficulty. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/integration/test_reference_agent.py` — `test_reference_agent_records_and_replays_without_model_or_tool_execution`
+
+Checks reference agent records and replays without model or tool execution. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/integration/test_reference_agent.py` — `test_seeded_v2_regression_changes_state_reproducibly`
+
+Checks seeded v2 regression changes state reproducibly. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/integration/test_reference_agent.py` — `test_reference_agent_recovery_errors_budget_and_http_failure`
+
+Checks reference agent recovery errors budget and http failure. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/integration/test_reference_agent.py` — `test_v2_skipped_execution_is_reported_as_replay_divergence`
+
+Checks v2 skipped execution is reported as replay divergence. It asserts actual state, results, or errors using local fixtures and transports so the behavior is verified without a live model.
+
+### `tests/integration/test_reference_agent.py` — `__init__`
+
+Stores a task and an initially empty list of captured requests for the fake model. The test can inspect exactly what the agent sent over HTTPX.
+
+### `tests/integration/test_reference_agent.py` — `__call__`
+
+Reads the visible task instruction and previous tool results to choose the next scripted response. It never reads expected goals, and it checks sampling fields sent by the real reference agent.
+
+### `tests/integration/test_reference_agent.py` — `exercise`
+
+Runs the surrounding test scenario with injected local HTTPX transports and explicit resource cleanup. No socket connection or live model is required.
+
+### `tests/integration/test_reference_agent.py` — `exercise`
+
+Runs the surrounding test scenario with injected local HTTPX transports and explicit resource cleanup. No socket connection or live model is required.
+
+### `tests/integration/test_reference_agent.py` — `exercise`
+
+Runs the surrounding test scenario with injected local HTTPX transports and explicit resource cleanup. No socket connection or live model is required.
+
+### `tests/integration/test_reference_agent.py` — `recovery`
+
+Emits a failing division call and checks that its error reaches the next model request. It then supplies a final answer to prove the agent can continue after a tool error.
+
+### `tests/integration/test_reference_agent.py` — `exercise`
+
+Runs the surrounding test scenario with injected local HTTPX transports and explicit resource cleanup. No socket connection or live model is required.
+
+### `tests/integration/test_reference_agent.py` — `exercise`
+
+Runs the surrounding test scenario with injected local HTTPX transports and explicit resource cleanup. No socket connection or live model is required.
+
+### `tests/integration/test_reference_agent.py` — `forbidden`
+
+Fails if a tool implementation executes during replay. This makes the zero-execution replay guarantee observable in the integration test.

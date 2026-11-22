@@ -222,3 +222,19 @@ class RunView(BaseModel):
     exchange_attempts: int | None = Field(default=None, ge=0)
     config: DetectorConfig = Field(default_factory=DetectorConfig)
     evaluated_at: float = 0.0
+
+
+class TaskVerifier(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    name: Literal["numeric_answer", "exact_state", "search_answer"]
+    params: dict[str, Any]
+
+
+class Task(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: str = Field(min_length=1)
+    env: Literal["calc", "kv", "files", "search", "tickets"]
+    instruction: str = Field(min_length=1)
+    seed: int = Field(ge=0)
+    difficulty: int = Field(ge=1, le=3)
+    verifier: TaskVerifier

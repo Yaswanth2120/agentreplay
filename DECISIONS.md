@@ -423,3 +423,52 @@
 - Ignore only the four pre-existing untracked identical duplicate paths in tooling;
   leave those files untouched. Legitimate tracked tests remain collected.
 - No GPU is required for M6; M7/M8 remain offline. M9 owns GPU rental and live runs.
+
+
+## M7 — 2026-11-22
+
+- Continue on `feature/m7-eval-tasks` from M6, with a PR based on
+  `feature/m6-detectors` while PR #3 remains open. Starting M7 does not merge M6.
+- Use per-task environment instances, strict schema dispatch, detached snapshots,
+  copied tool definitions/results, and SHA256 state digests. Fixtures are seeded;
+  stateless calc and immutable search intentionally need no random behavior.
+- Files are entirely virtual POSIX paths, never host file operations. Search is
+  a checked-in, generated 500-document synthetic maintenance corpus with literal
+  all-token matching, stable ID ranking, and explicit lookup/limit rules.
+- Freeze exactly 200 distinct instructions (40 per environment) with 16/16/8
+  difficulty distribution. Workflows are 1/3/6 calls; length defines difficulty,
+  not measured reasoning complexity. Resample duplicate instructions deterministically.
+  Hard ticket tasks resolve two tickets; KV deletion removes an existing fixture
+  key rather than an unnecessary temporary key. No reduction to 120 tasks.
+- Generate expected outcomes with simple task construction, independently of the
+  environment implementation. Test solutions execute only instructions and inspect
+  observed tool results, never verifier params. Known arithmetic, conversions,
+  corpus facts, and ticket transition assertions separately test environment rules.
+- Use strict typed exact final-state checks for mutable environments, ordered JSON
+  codes for search, and finite numeric JSON answers within absolute 1e-6 for calc.
+  These are task verifiers, not detector outputs or fault-label-derived judgments.
+  M8 will emit task_failure findings and persist tasks_version/config metadata.
+- Expose Task/TaskVerifier models in schema.py; these add no persisted DB fields,
+  so SCHEMA_VERSION stays 6. Include corpus/tasks/review as wheel package data.
+- Reference agent v1 uses HTTPX, schema-advertised tools, bounded requests, ordered
+  batched execution, injectable recorder/client/run ID, and explicit recoverable
+  tool errors. It never sees task verifier params. Client/fixture/reset/finalization
+  lifecycle stays with the caller so M8 can orchestrate it.
+- Implement v2 as a controlled seeded skipped execution in the first multi-call
+  batch. It reports a tool error and otherwise follows v1. Tests prove actual
+  state failure and replay divergence, without claiming a live statistical effect.
+- Replay tool functions do not execute by design, so fresh mutable environments
+  remain untouched. M8 must reconstruct state from executed actions or otherwise
+  verify observed outcomes; it cannot verify fresh replay state as final truth.
+- Owner review remains pending: sample four random tasks per environment (20 total)
+  with a fixed seed, and leave every reviewer/result field unfilled. Scripted
+  checks are complete but do not replace the separate mandatory hand-solve review.
+- No dependencies added. A wheel build without isolation failed because this
+  virtualenv lacks setuptools; the normal isolated build using the existing
+  declared backend succeeded. Build from a temporary clean source copy for final
+  packaging verification to exclude pre-existing untracked duplicate source files.
+- No GPU required. M8 stays offline; request rental before M9 live evaluation.
+
+M7 final verification: 603 tests passed, including all 200 scripted solutions;
+Ruff and git diff checks passed. The clean wheel loaded 200 tasks, 500 documents,
+and its pending review template. Existing TestClient deprecation warning remains.

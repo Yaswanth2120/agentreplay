@@ -36,3 +36,6 @@ extend-exclude = [
     "tests/test_replay_m4 2.py",
     "tests/integration/test_run_routing 2.py",
 ]
+
+[tool.setuptools.package-data]
+agentreplay = ["evals/data/*.jsonl", "evals/REVIEW.md"]
