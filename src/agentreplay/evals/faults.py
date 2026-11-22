@@ -89,6 +89,7 @@ async def evaluate_trace(
         "trace_id": trace.id,
         "fault_plan_id": plan.digest,
         "faults": [fault.model_dump() for fault in store.faults(session.run.id)],
+        "findings": [finding.model_dump() for finding in store.findings(session.run.id)],
         "exchanges": [exchange.model_dump() for exchange in runtime.observed_exchanges],
         "tools": [event.model_dump() for event in runtime.observed_tools],
         "tool_errors": tool_errors,

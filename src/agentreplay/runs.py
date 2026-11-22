@@ -7,9 +7,10 @@ import time
 from collections.abc import Callable
 from types import TracebackType
 
+from .detection import finish_run
 from .fault_runtime import FaultRuntime
 from .replay import ReplaySession
-from .schema import Run, RunOutcome
+from .schema import DetectorConfig, Run, RunObservations, RunOutcome
 from .store import TraceStore
 
 
@@ -38,6 +39,7 @@ class RunRecorder:
             (self.run.kind == "replay") != (self.manager.mode == "replay")
         ):
             raise ValueError("run kind is incompatible with manager mode")
+        DetectorConfig.model_validate(self.run.config.get("detectors", {}))
         self.run.started_at = self.clock()
         self.store.create_run(self.run)
         if self.run.kind == "replay":
@@ -74,12 +76,17 @@ class RunRecorder:
                 outcome, task_success=self.run.task_success, detail=detail
             )
         else:
-            finished = self.store.finish_run(
-                self.run.id,
+            finished = finish_run(
+                self.store,
+                self.run,
                 outcome,
                 finished_at=self.clock(),
                 task_success=self.run.task_success,
                 detail=detail,
+                observations=RunObservations(
+                    exchanges=self.store.exchanges(self.run.trace_id),
+                    tool_events=self.store.tool_events(self.run.trace_id),
+                ),
             )
         self.run.finished_at = finished.finished_at
         self.run.outcome = finished.outcome
@@ -148,10 +155,16 @@ class RunManager:
                 return self.session(run_id).finish(
                     outcome, task_success=task_success, detail=detail
                 )
-            return self.store.finish_run(
-                run_id,
+            runtime = self.faults(run_id)
+            return finish_run(
+                self.store,
+                run,
                 outcome,
                 finished_at=self.clock(),
                 task_success=task_success,
                 detail=detail,
+                observations=RunObservations(
+                    exchanges=runtime.observed_exchanges,
+                    tool_events=runtime.observed_tools,
+                ),
             )

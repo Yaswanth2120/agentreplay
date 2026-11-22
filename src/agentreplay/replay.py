@@ -14,8 +14,17 @@ from .canonical import (
     canonical_json,
     tool_args_hash,
 )
+from .detection import finish_run
 from .fault_runtime import FaultRuntime
-from .schema import Exchange, Finding, ReplayMode, Run, RunOutcome, ToolEvent
+from .schema import (
+    Exchange,
+    Finding,
+    ReplayMode,
+    Run,
+    RunObservations,
+    RunOutcome,
+    ToolEvent,
+)
 from .store import TraceStore
 
 
@@ -97,6 +106,10 @@ class Replayer:
     @property
     def remaining(self) -> int:
         return len(self._pending)
+
+    @property
+    def attempts(self) -> int:
+        return self._attempts
 
     @property
     def remaining_seqs(self) -> list[int]:
@@ -242,6 +255,7 @@ class ReplaySession:
                     severity="warning",
                     exchange_seq=exchange.seq,
                 )
+            self.faults.observe(exchange)
             return exchange
 
     def next_tool(self, name: str, args: dict[str, Any]) -> ToolEvent:
@@ -250,7 +264,9 @@ class ReplaySession:
             position = self._tool_attempts
             self._tool_attempts += 1
             try:
-                return self.tools.next(name, args)
+                event = self.tools.next(name, args)
+                self.faults.observe_tool(event)
+                return event
             except ToolReplayMiss as error:
                 self.finding(
                     "tool_replay_miss",
@@ -286,12 +302,18 @@ class ReplaySession:
                         created_at=self.clock(),
                     )
                 )
-            self.run = self.store.finish_run(
-                self.run.id,
+            self.run = finish_run(
+                self.store,
+                self.run,
                 outcome,
                 finished_at=self.clock(),
                 task_success=task_success,
                 detail=detail,
                 findings=findings,
+                observations=RunObservations(
+                    exchanges=self.faults.observed_exchanges,
+                    tool_events=self.faults.observed_tools,
+                    exchange_attempts=self.replayer.attempts,
+                ),
             )
             return self.run

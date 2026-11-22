@@ -1203,3 +1203,250 @@ context, and no fault label claiming a successful delivery.
 ### `test_proxy_cli_fault_flag_loads_plan_before_starting_server` and `fake_serve`
 The fake server checks the startup run contains the loaded plan and digest for both modes.
 The CLI test verifies --faults wiring without opening a socket or calling a live model.
+
+
+## M6: pure detection and durable observations
+
+### `src/agentreplay/store.py` — `get_observations`
+
+Loads a typed run observation snapshot or returns null when none exists. JSON decoding remains in the persistence layer.
+
+### `src/agentreplay/store.py` — `replace_detector_findings`
+
+Replaces findings for explicitly owned kinds in one transaction after validating ownership. Other findings survive repeated detection.
+
+### `src/agentreplay/detection.py` — `make_run_view`
+
+Builds a sanitized view from observed values and validated thresholds. It rejects cross-trace observations and excludes fault plans and labels from detector metadata.
+
+### `src/agentreplay/detection.py` — `load_run_view`
+
+Loads a finished run and its durable observation snapshot. Replay snapshots are required so source rows cannot masquerade as actual observations.
+
+### `src/agentreplay/detection.py` — `detect_run`
+
+Runs pure detection through the storage adapter and replaces detector-owned findings. Repeated invocations preserve replay findings and stable detector identities.
+
+### `src/agentreplay/detection.py` — `finish_run`
+
+Computes findings from final observations and delegates atomic persistence to the store. Completion metadata, snapshot, and all findings either commit together or roll back.
+
+### `src/agentreplay/replay.py` — `attempts`
+
+Exposes the number of attempted replay exchanges, including misses. Budget detection needs attempted work rather than only matched source rows.
+
+### `src/agentreplay/json_validation.py` — `reject_constant`
+
+Rejects non-finite numeric constants while parsing arguments. These Python JSON extensions are not valid tool argument JSON.
+
+### `src/agentreplay/json_validation.py` — `parse_arguments`
+
+Parses strict JSON and requires an object for tool arguments. Separate parsing and schema checks produce clearer failure reasons.
+
+### `src/agentreplay/json_validation.py` — `schema_errors`
+
+Validates Draft 2020-12 schemas and values with deterministic short error messages. External references are rejected before resolution so validation stays offline.
+
+### `src/agentreplay/fault_runtime.py` — `observe_tool`
+
+Keeps the latest observed version of each tool sequence as a deep copy. Fault-mutated results replace base observations without changing the source trace.
+
+### `src/agentreplay/detectors.py` — `_finding`
+
+Builds a stable finding from run identity, evidence, and the supplied evaluation time. This avoids clock or UUID access inside pure detectors.
+
+### `src/agentreplay/detectors.py` — `_calls`
+
+Collects emitted tool calls and their flattened indices while tolerating malformed response containers. Invalid call shapes remain visible to validation.
+
+### `src/agentreplay/detectors.py` — `_tool_issue`
+
+Checks function shape, declaration, strict JSON arguments, and the declared schema. It returns a short reason rather than reading any injected fault information.
+
+### `src/agentreplay/detectors.py` — `detect_invalid_tool_call`
+
+Validates every emitted call against declarations in its own request. Findings retain exchange and call indices so failures can be inspected.
+
+### `src/agentreplay/detectors.py` — `_occurrences`
+
+Builds ordered name/argument signatures from emitted calls or executed events. Matching executions annotate signatures without counting a call twice.
+
+### `src/agentreplay/detectors.py` — `detect_loop`
+
+Finds the earliest consecutive repeated pattern within the configured window. It checks cycles up to four calls and records the triggering exchange and associated tool.
+
+### `src/agentreplay/detectors.py` — `_timed_out`
+
+Tests status codes and measured latency against the exchange threshold. The comparison is strict so equality remains valid.
+
+### `src/agentreplay/detectors.py` — `detect_timeout`
+
+Checks exchange statuses and both exchange and tool latency. Tools inherit the exchange threshold unless explicitly configured otherwise.
+
+### `src/agentreplay/detectors.py` — `_malformed_reason`
+
+Checks successful response structure and message contents for missing or invalid values. Empty text and null content with tool calls remain valid.
+
+### `src/agentreplay/detectors.py` — `detect_malformed_response`
+
+Reports malformed successful responses with their exchange sequence. HTTP error envelopes are left to status detectors to avoid duplicate classifications.
+
+### `src/agentreplay/detectors.py` — `detect_llm_error`
+
+Reports HTTP failures that do not meet the timeout rule. It uses observed status and latency rather than injection metadata.
+
+### `src/agentreplay/detectors.py` — `detect_tool_error`
+
+Reports each executed tool event with a present error. An empty error string still represents an error because absence is expressed by null.
+
+### `src/agentreplay/detectors.py` — `detect_budget_exceeded`
+
+Compares attempted exchanges with the configured step budget. Replay misses count as attempts and exceeding the budget produces a warning.
+
+### `src/agentreplay/detectors.py` — `detect`
+
+Runs the seven pure detector functions in a fixed order. Replay divergences and task verification remain owned by their existing or future producers.
+
+### `src/agentreplay/schema.py` — `validate_window`
+
+Rejects loop windows shorter than the minimum repeat count. This prevents configurations that cannot detect even consecutive identical calls.
+
+### `src/agentreplay/schema.py` — `from_run`
+
+Projects a full Run onto the allowed detector metadata fields during validation. Fault configuration and ground truth never enter the pure view.
+
+### `tests/test_detectors.py` — `exchange`
+
+Builds a small typed exchange fixture with overridable boundary values. Keeping fixture construction local makes detector expectations independent of production orchestration.
+
+### `tests/test_detectors.py` — `tool_event`
+
+Builds a small typed tool event fixture with overridable boundary values. Keeping fixture construction local makes detector expectations independent of production orchestration.
+
+### `tests/test_detectors.py` — `view`
+
+Builds a small typed view fixture with overridable boundary values. Keeping fixture construction local makes detector expectations independent of production orchestration.
+
+### `tests/test_detectors.py` — `test_invalid_tool_calls_have_exchange_sequence_and_reason`
+
+Verifies invalid tool calls have exchange sequence and reason. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_valid_tool_calls_are_accepted_at_integer_boundaries`
+
+Verifies valid tool calls are accepted at integer boundaries. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_invalid_call_shapes_and_call_indices_are_handled`
+
+Verifies invalid call shapes and call indices are handled. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_schema_validation_supports_local_refs_and_rejects_invalid_unresolved_or_external_schemas`
+
+Verifies schema validation supports local refs and rejects invalid unresolved or external schemas. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_consecutive_loop_boundary`
+
+Verifies consecutive loop boundary. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_cycle_lengths_and_repeat_boundary`
+
+Verifies cycle lengths and repeat boundary. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_cycles_outside_supported_size_or_window_are_not_loops`
+
+Verifies cycles outside supported size or window are not loops. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_emitted_calls_are_not_double_counted_with_executions`
+
+Verifies emitted calls are not double counted with executions. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_timeout_latency_boundary_for_exchanges_and_tools`
+
+Verifies timeout latency boundary for exchanges and tools. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_status_timeout_and_llm_error_classification`
+
+Verifies status timeout and llm error classification. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_timeout_configuration_and_tool_exception_text_are_separate`
+
+Verifies timeout configuration and tool exception text are separate. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_malformed_response_positive_shapes`
+
+Verifies malformed response positive shapes. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_unparseable_response_and_valid_message_boundaries`
+
+Verifies unparseable response and valid message boundaries. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_tool_error_presence_boundary`
+
+Verifies tool error presence boundary. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_budget_boundary`
+
+Verifies budget boundary. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_budget_includes_unmatched_replay_attempts_and_respects_configuration`
+
+Verifies budget includes unmatched replay attempts and respects configuration. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_invalid_threshold_configuration_is_rejected`
+
+Verifies invalid threshold configuration is rejected. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `test_detector_module_is_label_storage_and_clock_independent`
+
+Verifies detector module is label storage and clock independent. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/test_detectors.py` — `forbidden`
+
+Raises if the test accesses a forbidden source of state. This makes detector purity and label independence observable failures.
+
+### `tests/integration/test_detection.py` — `test_faulted_observations_detect_after_restart_without_labels`
+
+Verifies faulted observations detect after restart without labels. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `test_clean_golden_has_no_errors_in_runtime_or_reloaded_view`
+
+Verifies clean golden has no errors in runtime or reloaded view. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `test_detect_cli_is_idempotent_and_preserves_replay_findings`
+
+Verifies detect cli is idempotent and preserves replay findings. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `test_replay_budget_counts_misses_and_empty_snapshot_does_not_fall_back`
+
+Verifies replay budget counts misses and empty snapshot does not fall back. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `test_snapshot_finalization_and_findings_roll_back_together`
+
+Verifies snapshot finalization and findings roll back together. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `test_detection_cli_configuration_errors_are_clear`
+
+Verifies detection cli configuration errors are clear. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `test_record_context_detects_actual_tool_failure_without_injection`
+
+Verifies record context detects actual tool failure without injection. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `test_bad_result_needs_an_independent_verifier_not_the_fault_schema`
+
+Verifies bad result needs an independent verifier not the fault schema. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `test_cross_trace_views_and_bad_control_thresholds_fail_before_persistence`
+
+Verifies cross trace views and bad control thresholds fail before persistence. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `test_record_run_without_snapshot_can_analyze_captured_rows`
+
+Verifies record run without snapshot can analyze captured rows. It uses local observations and explicit assertions so the behavior is checked without a live model or network.
+
+### `tests/integration/test_detection.py` — `labels_forbidden`
+
+Raises if the test accesses a forbidden source of state. This makes detector purity and label independence observable failures.
+
+### `tests/integration/test_detection.py` — `fail`
+
+Raises a natural tool exception without any injection plan. The integration test proves detection works on actual observed failures.

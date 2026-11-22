@@ -126,6 +126,14 @@ class FaultRuntime:
                     return
             self.observed_exchanges.append(exchange.model_copy(deep=True))
 
+    def observe_tool(self, event: ToolEvent) -> None:
+        with self._lock:
+            for index, previous in enumerate(self.observed_tools):
+                if previous.seq == event.seq:
+                    self.observed_tools[index] = event.model_copy(deep=True)
+                    return
+            self.observed_tools.append(event.model_copy(deep=True))
+
     def needs_response(self, seq: int) -> bool:
         with self._lock:
             return bool(self._candidates(seq))

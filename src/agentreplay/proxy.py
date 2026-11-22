@@ -16,7 +16,15 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from .faults import FaultPlan, FaultPlanError, plan_config
 from .replay import ReplayMiss
 from .runs import RunManager
-from .schema import CreateRunRequest, Exchange, FinishRunRequest, ReplayMode, Run, Trace
+from .schema import (
+    CreateRunRequest,
+    DetectorConfig,
+    Exchange,
+    FinishRunRequest,
+    ReplayMode,
+    Run,
+    Trace,
+)
 from .store import TraceStore
 from .streaming import emit_chunks, reassemble, synthesize_chunks
 
@@ -65,6 +73,7 @@ def create_app(
     run_config: dict[str, Any] | None = None,
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
 ) -> FastAPI:
+    DetectorConfig.model_validate((run_config or {}).get("detectors", {}))
     client = None
     if mode != "replay":
         trace = store.get_trace(trace_id) if trace_id else None
@@ -395,6 +404,10 @@ def create_app(
                 chosen = FaultPlan.from_dict(explicit) if explicit is not None else None
             except FaultPlanError as error:
                 return JSONResponse({"error": {"message": str(error)}}, status_code=400)
+        try:
+            DetectorConfig.model_validate(config.get("detectors", {}))
+        except ValueError as error:
+            return JSONResponse({"error": {"message": str(error)}}, status_code=400)
         values["config"] = {**config, **plan_config(chosen)}
         created = store.create_run(
             Run(
