@@ -228,3 +228,13 @@ work. Clean FP sources exclude runs with these original findings. Determinism
 currently compares the two replays with each other; it does not prove equality
 between a failed source recording and its replay. Interpret those results with
 this limitation until agent error normalization is addressed in a separate fix.
+
+## Vast A100 image preset
+
+For the supplied instance, `examples/eval-vast-a100.yaml` records the image's
+installed vLLM 0.32.0 and internal port 18000 instead of replacing its Python/CUDA
+stack. Model/tokenizer revisions and experiment settings remain pinned. Pause the
+template's unrelated default model service before starting the project server;
+use supervisor for both long-running model and evaluation processes. The workspace
+on this host is not a persistent volume, so an off-machine verified backup remains
+required. This is an explicit pre-cohort deployment configuration change.

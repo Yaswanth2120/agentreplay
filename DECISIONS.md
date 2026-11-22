@@ -595,3 +595,12 @@ replay. A v2 tickets-017 experiment reproduced completed source / agent_error
 repeats with strict misses. Repeat-to-repeat determinism is not source equivalence;
 clean FP eligibility excludes originally failing sources. A separate normalization
 fix is needed before claiming faithful natural-error replay.
+
+### First owner-provided M9 host
+
+Connected to the supplied Vast instance and read its operating guide. It has an
+A100-SXM4 80 GB, Python 3.12, vLLM 0.32.0, and a nonpersistent workspace. Pause the
+template's unrelated GPT-OSS service and use the installed vLLM environment rather
+than replacing its CUDA/PyTorch stack. The version/port override is explicit in
+examples/eval-vast-a100.yaml before starting a cohort; the generic 0.34.0 plan stays
+available. Model and evaluation processes use supervisor as the host guide requires.
