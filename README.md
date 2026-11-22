@@ -27,7 +27,9 @@ agentreplay replay --trace-id <id> --mode strict --port 9000
 - [x] Streaming capture/replay, interleaved tool-call reassembly, partial-error capture, and stream/non-stream mismatch warnings (M1 offline tests)
 - [x] Versioned seeded fault plans, all 11 fault classes, persisted labels, and fixed-trajectory fault exercise (M5)
 - [x] Pure failure detectors, durable observed run views, and detection CLI (M6 offline tests)
-- [ ] Labeled eval set and measured detector precision/recall (200 tasks x 3 trials)
+- [x] Five deterministic environments, 200 frozen tasks, independent verifiers, reference agent v1/v2 (M7 automated checks)
+- [ ] Owner hand-solve review of 20 tasks
+- [ ] Evaluation harness and measured detector precision/recall (200 tasks x 3 trials)
 - [x] In-process Python tool capture/replay, decorator API, and minimal HTTPX agent (M2 offline tests)
 - [x] Run lifecycle, validated trace export/import, inspection CLI, and two offline golden traces (M3)
 - [x] Per-run replay, structured divergences, control endpoints, run diff, and offline golden-check CLI (M4)
@@ -478,3 +480,79 @@ exact paths from pytest/Ruff. The existing TestClient deprecation warning and
 editable-install environment issue remain; CI and real vLLM chunk validation are
 still pending. No GPU was used. M7/M8 can proceed offline; rental is planned for
 M9 live evaluation, with notice before any earlier live validation needs it.
+
+
+## M7: environments, frozen tasks, and reference agent
+
+The task set contains 40 distinct instructions per environment (200 total):
+16 difficulty-1 tasks, 16 difficulty-2 tasks, and 8 difficulty-3 tasks in each.
+The supplied workflows use 1, 3, and 6 tool calls respectively. These are small,
+procedural tool-use tasks; difficulty describes the workflow length, not a claim
+about general reasoning difficulty. The corpus is synthetic, not a real search
+benchmark. Automated solution checks do not establish task quality by themselves.
+
+| Environment | Tools and rules |
+|---|---|
+| `calc` | add/subtract/multiply/divide; compatible length, mass, and time conversions; finite values only |
+| `kv` | JSON get/set/delete/list; isolated fixture key; missing keys raise recoverable errors |
+| `files` | in-memory read/write/list/grep; relative POSIX paths; literal, case-sensitive grep with one-based line numbers |
+| `search` | all-token keyword search and document lookup over 500 frozen documents; deterministic ID ordering |
+| `tickets` | create/update/query; sequential IDs; assignment required to advance open → in_progress → resolved; resolved tickets immutable |
+
+Use `make_environment(name, seed)`, then `env.call(name, args)`. Dispatch validates
+JSON-native, finite arguments against the advertised schema before executing.
+`reset(seed)` restores fixtures, `snapshot()` returns detached JSON state, and
+`state_digest()` fingerprints it. Tool definitions and results are copied so
+mutating a returned value cannot alter another task's environment. Files never
+access the host filesystem; search reads only its packaged corpus fixture.
+
+Tasks live in `src/agentreplay/evals/data/tasks.jsonl`; the corpus is beside it.
+`load_tasks()` validates models/IDs and `tasks_version()` returns the SHA256 of
+exact task-file bytes with a `tasks-v1` prefix. Freeze these files: any later
+correction must be treated as a new evaluation version. M8 will record that
+version in every run; this milestone does not implement the harness or scoring.
+To reproduce artifacts in a temporary directory without overwriting frozen data:
+
+```bash
+PYTHONPATH=src python -m agentreplay.evals.make_tasks \
+  --out /tmp/agentreplay-tasks.jsonl \
+  --corpus-out /tmp/agentreplay-corpus.jsonl \
+  --review-out /tmp/agentreplay-review.md
+```
+
+The fixed generation seed is 20261122. Task/corpus/template generation is checked
+byte-for-byte against committed artifacts. Runtime package data includes the JSONL
+fixtures and review template. The wheel also passed a data-loading smoke test.
+
+`verify(task, state, final_answer)` compares exact final state for mutable
+environments, ordered answer codes for search, and a finite JSON numeric result
+with absolute tolerance 0.000001 for calc. Mutable-state comparison preserves JSON
+types and unrelated fixture entries; prose claiming success does not pass. The
+verifier does not execute solutions or import environments, generators, detectors,
+or fault labels. Expected values stay outside the agent prompt.
+
+`examples/reference_agent.py:run_agent` accepts an injected HTTPX AsyncClient,
+task, environment, optional ToolRecorder and run ID, and v1/v2 settings. It sends
+`temperature=0.7` and `seed=trial`, executes batches in order, returns tool errors
+to the model for recovery, and enforces a 25-request default budget. HTTP failures
+surface to the caller. The caller owns fresh environment creation and run finish.
+Version v2 intentionally skips one execution in its first multi-call batch, chosen
+by a local RNG seeded with `regression_seed` (default 7), and returns an explicit
+error for that call. Single-call batches are unaffected. This controlled regression
+has no claimed live success-rate effect until measured. Tool replay returns saved
+results without applying mutations to a fresh environment; M8 must not treat that
+untouched environment as reconstructed final state for mutable task verification.
+
+M7 verification: **603 tests passed** (293 additional cases), Ruff and diff checks
+passed, and a clean wheel loaded its packaged fixtures. Verification includes all
+200 scripted correct/wrong solutions, 15 reference-agent
+environment/difficulty combinations, natural error recovery, v2 reproducibility,
+and record/replay with zero model/tool execution. The v2 replay produces a miss
+and leftover findings. Existing tests are retained. The existing TestClient warning
+remains; no live LLM or GPU was used. Full harness/statistics/reports are M8, live
+GPU evaluation is M9, and CI/release work is M10.
+
+The owner must separately hand-solve the 20 sampled tasks in
+[src/agentreplay/evals/REVIEW.md](src/agentreplay/evals/REVIEW.md), then inspect each
+verifier and record solvability/correctness. It remains **PENDING**. Success-rate
+results should not be treated as validated until that review is completed.
