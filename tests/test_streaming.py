@@ -237,7 +237,7 @@ def test_stream_mismatch_both_directions_persisted(
     }
 
 
-@pytest.mark.parametrize("version", [None, "1", "2", "3", "999"])
+@pytest.mark.parametrize("version", [None, "1", "2", "3", "4", "999"])
 def test_reject_old_and_future_database_without_modifying(
     tmp_path: Path, version: str | None
 ) -> None:

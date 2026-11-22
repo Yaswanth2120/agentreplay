@@ -7,6 +7,7 @@ import time
 from collections.abc import Callable
 from types import TracebackType
 
+from .fault_runtime import FaultRuntime
 from .replay import ReplaySession
 from .schema import Run, RunOutcome
 from .store import TraceStore
@@ -91,6 +92,7 @@ class RunManager:
     ) -> None:
         self.store, self.mode, self.clock = store, mode, clock
         self._sessions: dict[str, ReplaySession] = {}
+        self._faults: dict[str, FaultRuntime] = {}
         self._active: dict[str, int] = {}
         self._lock = threading.RLock()
 
@@ -110,6 +112,15 @@ class RunManager:
                     self.store, run, clock=self.clock
                 )
             return self._sessions[run_id]
+
+    def faults(self, run_id: str) -> FaultRuntime:
+        with self._lock:
+            run = self.get_run(run_id)
+            if run.kind == "replay":
+                return self.session(run_id).faults
+            if run_id not in self._faults:
+                self._faults[run_id] = FaultRuntime(self.store, run, clock=self.clock)
+            return self._faults[run_id]
 
     def begin(self, run_id: str) -> Run:
         with self._lock:

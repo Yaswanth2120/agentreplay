@@ -8,7 +8,16 @@ import threading
 from pathlib import Path
 
 from .canonical import canonical_json
-from .schema import SCHEMA_VERSION, Exchange, Finding, Run, RunOutcome, ToolEvent, Trace
+from .schema import (
+    SCHEMA_VERSION,
+    Exchange,
+    Fault,
+    Finding,
+    Run,
+    RunOutcome,
+    ToolEvent,
+    Trace,
+)
 
 DDL = """
 CREATE TABLE IF NOT EXISTS schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -50,6 +59,14 @@ CREATE TABLE IF NOT EXISTS runs (
     task_success INTEGER, detail TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_runs_task ON runs (task_id, agent_version, model);
+CREATE TABLE IF NOT EXISTS faults (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    fault_class TEXT NOT NULL,
+    target TEXT NOT NULL CHECK (target IN ('exchange','tool_event')),
+    target_seq INTEGER NOT NULL,
+    params TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS findings (
     id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -354,3 +371,42 @@ class TraceStore:
                 self._insert_exchange(exchange)
             for event in events:
                 self._insert_tool_event(event)
+
+    def add_fault(self, fault: Fault) -> None:
+        with self._lock, self.conn:
+            self.conn.execute(
+                "INSERT INTO faults VALUES (?,?,?,?,?,?,?)",
+                (
+                    fault.id,
+                    fault.run_id,
+                    fault.fault_class,
+                    fault.target,
+                    fault.target_seq,
+                    canonical_json(fault.params),
+                    fault.created_at,
+                ),
+            )
+
+    def faults(self, run_id: str) -> list[Fault]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT * FROM faults WHERE run_id=? ORDER BY target,target_seq,rowid",
+                (run_id,),
+            ).fetchall()
+        return [
+            Fault(**{**dict(row), "params": json.loads(row["params"])}) for row in rows
+        ]
+
+    def update_tool_event(self, event: ToolEvent) -> None:
+        with self._lock, self.conn:
+            cursor = self.conn.execute(
+                "UPDATE tool_events SET result=?,error=? WHERE id=? AND trace_id=?",
+                (
+                    canonical_json(event.result) if event.error is None else None,
+                    event.error,
+                    event.id,
+                    event.trace_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("unknown tool event")

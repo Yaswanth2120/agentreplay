@@ -14,6 +14,7 @@ from .canonical import (
     canonical_json,
     tool_args_hash,
 )
+from .fault_runtime import FaultRuntime
 from .schema import Exchange, Finding, ReplayMode, Run, RunOutcome, ToolEvent
 from .store import TraceStore
 
@@ -188,6 +189,7 @@ class ReplaySession:
         ):
             raise ValueError("replay session must match an existing unfinished run")
         self.store, self.run, self.clock = store, run, clock
+        self.faults = FaultRuntime(store, run, clock=clock)
         self.replayer = Replayer(
             store.exchanges(run.trace_id), run.replay_mode or "strict"
         )

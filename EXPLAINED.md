@@ -888,3 +888,318 @@ not dependent on argparse's choices enforcement.
 Creates runs on different source requests and persists a miss finding for one.
 The CLI report must expose both the source request diff and stored finding evidence,
 while unknown comparison IDs fail explicitly.
+
+## M5 production functions
+
+### `FaultSelect.validate_selection`
+Requires exactly one supported selector and checks explicit sequences are nonempty,
+unique, and nonnegative. Field validation separately rejects invalid probability
+bounds and nonpositive nth intervals before runtime selection begins.
+
+### `FaultRule.validate_rule`
+Checks the fault class, compatible target, and allowed parameters, then fills
+class defaults on an independent copy. This keeps normalization and parameter
+errors at plan load time rather than discovering them after an agent runs.
+
+### `faults.schema_validator`
+Checks a declared Draft 2020-12 schema and rejects external references recursively.
+Keeping resolution local prevents a replay mutation from fetching a remote schema.
+
+### `faults.validate_params`
+Validates JSON-native params and class-specific status, delay, repeat, exception,
+name/message, and result-schema requirements. Requiring a genuinely invalid bad
+result avoids labeling a still-valid value as a shape violation.
+
+### `FaultPlan.validate_version`
+Accepts only integer version 1, including rejecting Python's boolean-as-integer case.
+An explicit version boundary makes future plan semantics fail clearly in older code.
+
+### `FaultPlan.from_dict`
+Validates a parsed plan and wraps expected model/schema/type errors as FaultPlanError.
+Both YAML loading and saved-run configuration use this same validation path.
+
+### `FaultPlan.load`
+Reads UTF-8 YAML with safe_load and reports path/read/parse errors clearly.
+It then delegates structural validation so comments and YAML formatting do not
+create a second interpretation of the plan.
+
+### `FaultPlan.digest`
+Hashes canonical JSON of the normalized plan with SHA-256. Filled defaults and
+sorted mapping keys make equivalent YAML formatting produce the same run plan ID.
+
+### `faults.plan_config`
+Returns the normalized plan under the run config's fault_plan key, or an empty dict.
+It lets proxy and standalone tool runs attach the same representation without
+making the store depend on fault-plan business logic.
+
+### `FaultSelector.__init__`
+Copies the plan, creates a private Random(seed), and initializes a protected draw cache.
+It avoids changing global agent randomness or sharing selection state across runs.
+
+### `FaultSelector.selected`
+Generates probability slots in sequence/rule order and returns matching rules for
+a target and sequence. Caching missing lower positions makes selection independent
+of request arrival order, while explicit and nth selectors need no random draw.
+
+### `faults.replace_response`
+Copies an exchange and replaces its observed response/error/status and stream chunks.
+Mutating the copy protects source traces; rebuilding chunks makes streamed and JSON
+fault representations describe the same changed completion.
+
+### `faults.invalid_arguments`
+Chooses a deterministic JSON value rejected by the declared tool schema.
+An unconstrained schema returns no candidate so callers can skip without inventing
+a schema-violation label.
+
+### `faults.mutate_exchange`
+Applies one LLM/tool-call mutation to a copied completion or returns None when it
+cannot apply. It preserves request matching fields, uses canonical truncation for
+malformed JSON, and gives repeated semantic tool calls unique protocol IDs.
+
+### `faults.mutate_tool`
+Returns a copied bad result or raises the configured supported execution error.
+It performs no storage or real tool execution, leaving ordering and capture to callers.
+
+### `FaultRuntime.__init__`
+Verifies the persisted unfinished run and its saved normalized plan/hash, then
+creates a selector, pending-loop queue, observation lists, and synchronization lock.
+Separating observations from labels gives future detector inputs the values actually
+exposed without requiring them to inspect ground-truth rows.
+
+### `FaultRuntime.ensure_open`
+Rejects operations after the associated run finishes or disappears.
+The tool recorder calls it before real execution so a late call cannot apply state
+changes and only then discover its fault run was closed.
+
+### `FaultRuntime._log`
+Persists a fault row once per rule/target/sequence with an injected timestamp.
+It completes before a changed value or injected exception is exposed and propagates
+storage failures instead of silently continuing without ground truth.
+
+### `FaultRuntime._candidates`
+Combines exchange-selected rules with scheduled tool loops in plan order, using
+tool sequence to break pending-loop ties. This makes rule precedence explicit and
+separate from mutation applicability.
+
+### `FaultRuntime.pre_exchange`
+Applies a terminal HTTP/timeout rule when it is the first candidate, before upstream.
+Other candidates require a response, so they are deferred rather than being guessed
+inapplicable without seeing the model output.
+
+### `FaultRuntime.exchange`
+Applies the first eligible candidate, logs it, records its observed output, and
+tracks an optional delay. Ineligible candidates produce diagnostic skips without
+fault rows; a scheduled loop is removed only when its response mutation occurs.
+
+### `FaultRuntime.observe`
+Keeps an independent observed exchange copy and replaces an earlier copy at the
+same sequence. Recording can therefore update a preflight observation with its
+final measured latency and persisted representation without duplicate entries.
+
+### `FaultRuntime.needs_response`
+Checks whether a response-dependent candidate is selected or scheduled for a sequence.
+The proxy buffers a stream only when this is necessary, preserving clean passthrough.
+
+### `FaultRuntime.delay_ms`
+Returns the delay associated with the selected exchange fault, defaulting to zero.
+The proxy decides whether to await it, so replay stays instantaneous.
+
+### `FaultRuntime.__call__`
+Implements the tool-result hook: schedule a loop or persist a label before returning
+a bad result/raising an injected error. Already-invalid base results are skipped
+because their failure was not caused by this injection.
+
+### `FaultRuntime.pending_loops`
+Reports scheduled tool sequences that have not yet produced a mutated LLM response.
+The evaluation summary exposes them without falsely treating schedules as injections.
+
+### `TraceStore.add_fault`
+Inserts the run, class, target, sequence, canonical params, and timestamp as one
+committed fault row. Keeping the SQL here preserves the project's storage boundary.
+
+### `TraceStore.faults`
+Loads a run's labels as validated Fault models in target/sequence order.
+Stable retrieval order lets reproducibility comparisons ignore completion order
+while still retaining timestamps and insertion order for ties.
+
+### `TraceStore.update_tool_event`
+Updates an existing event's observed result/error after a record-mode fault hook.
+Replay does not call it, so faulted replay results cannot rewrite the source trace.
+
+### `RunManager.faults`
+Returns the replay session's runtime or lazily creates one for a recording/live run.
+Sharing this object lets proxy responses and in-process tools coordinate a plan
+and pending loops without using global mutable state.
+
+### `ToolRecorder._apply_faults`
+Applies a runtime hook and captures the resulting value or exception in an observed
+copy through finally. Record mode persists that outcome, while replay retains the
+copy in memory and leaves the recorded tool event untouched.
+
+### `ToolRecorder.__init__` and `call` (expanded)
+Accept normalized plans, shared runtimes, or the existing callback API, and bind
+plans to a run with its hash/config before injection. Calls verify runtime state,
+observe natural failures without fault labels, and preserve the old callback behavior.
+
+### `create_app.fault_response`
+Renders a mutated completion as JSON, SSE, or deliberately malformed raw content.
+It avoids passing a malformed body through JSONResponse, which would repair or
+replace the corruption instead of exposing the intended fault.
+
+### `create_app.deliver_fault`
+Waits a live injected delay and saves the exchange in finally before returning it.
+Fault labels already exist at this point, and cancellation still leaves a recorded
+504 observation instead of losing the simulated timeout.
+
+### `create_app.buffered_response`
+Collects a selected stream, reassembles it, applies a response-dependent mutation,
+and delegates delivery/persistence. It closes upstream and preserves partial/error
+information rather than pretending all faulted streams completed successfully.
+
+### `create_app.save`, `record_response`, and `replay_response` (expanded)
+Recording stores and observes the delivered representation, using terminal preflight
+faults or post-response mutations as appropriate. Replay matches first and mutates
+only a copy, retaining divergence checks, source immutability, and zero sleeps.
+
+### `create_app.create_run` (expanded)
+Attaches the default plan or validates an explicit config override, with null disabling it.
+It stores the corresponding digest before any injection and rejects invalid overrides
+before creating a run row.
+
+### `evals.faults.evaluate_trace`
+Replays a fixed recorded event trajectory through the actual proxy and shared tool
+runtime, collecting observations, labels, errors, skips, and pending loops. It does
+not score an adaptive agent, and finally finalizes the run even on infrastructure errors.
+
+### `evals.faults.evaluate_faults`
+Selects an existing trace or all stored traces and executes the fixed-trajectory
+exercise with an injectable clock. It marks the report as unscored and rejects an
+empty/missing trace selection rather than claiming a successful evaluation of nothing.
+
+### `inspection.render_trace` and `cli.main` (expanded)
+Inspection now includes durable fault labels under each run. Argparse wires --faults
+and eval faults to the plan loader/evaluator while leaving selection and mutation
+logic outside the CLI.
+
+## M5 test functions and helpers
+
+### `make_plan`
+Builds a small validated one-rule plan with explicit target, selector, and params.
+Tests use it to make the intended fault readable without repeating YAML boilerplate.
+
+### `tool_exchange`
+Creates a representative completion with a declared add tool and valid arguments.
+Mutation tests can compare an unchanged source against the changed observable response.
+
+### `runtime_for`
+Creates a trace/run with a normalized plan/hash and returns its run-bound runtime.
+The injected clock makes fault timestamps deterministic in storage assertions.
+
+### `test_yaml_load_hash_and_defaults_are_canonical`
+Loads YAML and compares its plan/hash to an explicitly defaulted equivalent and a
+direct SHA-256 computation. It also checks normalized run config can reconstruct
+the same plan and a missing plan produces empty config.
+
+### `test_invalid_plans_fail_clearly_at_load`
+Exercises invalid versions, seed types, classes, targets, selectors, and params
+through the file loader. Every case must fail with FaultPlanError before injection.
+
+### `test_bad_yaml_is_rejected`
+Checks malformed YAML, unsafe tags, wrong root shapes, and missing files.
+A single clear plan error type keeps these failures distinguishable from agent failures.
+
+### `test_bad_class_parameters_are_rejected`
+Checks loop/delay/name/error/result-schema constraints, JSON-native params, and
+external schema references. Rejection at load prevents unsupported or nonfaulting
+values from entering ground truth.
+
+### `test_selector_matches_canonical_random_order_and_is_arrival_independent`
+Compares selection to directly computed private-RNG draws across both event targets.
+It also checks reversed arrival, probability boundaries, nth positions, and negative
+sequence rejection.
+
+### `test_every_llm_mutation_logs_before_return_and_preserves_input`
+Checks each LLM/tool-call mutation has the expected changed status/body/arguments/calls
+and a persisted fault row with the run plan hash. It also protects source immutability,
+wrong-name collision handling, schema invalidity, and unique repeated-call IDs.
+
+### `test_tool_faults_both_modes_record_actual_outcome_and_no_replay_execution` and `real`
+The counted real tool returns a valid result before each injected fault is applied.
+The test checks error/bad-result observations in both modes, one persisted label,
+recorded outcome updates, and no extra real execution or source mutation in replay.
+
+### `test_tool_targeted_loop_is_logged_when_next_llm_response_is_mutated`
+Schedules a loop from a completed tool event and checks no premature label exists.
+Only the changed next LLM response creates the tool-targeted row and clears the schedule.
+
+### `test_selection_reproducibility_is_asserted_on_fault_rows`
+Applies one plan twice to the same stored trace, reversing event arrival on the
+second pass. Canonical fault columns must match while source exchange bytes stay unchanged.
+
+### `test_ineligible_mutations_are_skipped_and_first_applicable_rule_wins`
+Starts with an ineligible tool mutation followed by an HTTP rule and checks only
+the applicable fault is logged. It also checks unconstrained schemas skip and
+external schema references fail without network access.
+
+### `test_logging_failure_prevents_faulted_value_delivery` and `fail_write`
+The write helper simulates unavailable storage during label persistence.
+The runtime must raise that storage error without returning the mutated response
+or claiming an observed injection completed.
+
+### `test_fault_store_reopens_with_canonical_params_and_runtime_rejects_hash_mismatch`
+Verifies fault rows survive reopening with canonical params and a mismatched run
+plan is rejected. It also checks updating a nonexistent tool event fails explicitly.
+
+### `test_finished_runtime_rejects_injection_before_executing_tool`
+Finishes runtimes and attempts further LLM/tool work, including a fail-fast real function.
+It checks late operations create no faults or tool events and incompatible runtime modes fail.
+
+### `test_natural_tool_errors_are_observed_without_false_injection_labels` and `fail`
+The helper raises a natural tool error before any post-result mutation is possible.
+The test requires the error to be observed and stored without an injected-fault label.
+
+### `seed_fault_trace`
+Stores a valid tool-call completion in streamed or JSON form.
+Proxy tests can reuse the exact source request while checking faults do not alter recording rows.
+
+### `test_replay_terminal_faults_are_instant_logged_and_leave_source_unchanged`, `no_sleep`, and `no_upstream`
+The fail-fast helpers forbid replay delays or upstream access for timeout/HTTP faults.
+The test checks returned status/marker, stored plan/hash/label, finish, and unchanged source bytes.
+
+### `test_record_terminal_fault_precedes_upstream_and_is_logged_before_delay` and `fake_sleep`
+The fake delay checks the fault row already exists while the upstream callback must never run.
+The test verifies live timeout/error statuses, measured latency, and the configured delay value.
+
+### `test_stream_faults_are_delivered_and_recorded_in_the_observed_shape`
+Exercises empty responses, corrupt tool arguments, and malformed JSON over SSE in both modes.
+It checks actual delivered data plus recorded/observed response and chunk shapes, including raw corruption.
+
+### `test_tool_loop_hook_is_shared_with_proxy_and_has_real_tool_target` and `handler`
+The scripted handler supplies a real tool-call response followed by a final answer.
+The test runs the shared tool hook between requests and verifies the next response
+repeats the tool, logs its actual original sequence, and never calls upstream in replay.
+
+### `test_control_runs_can_override_or_disable_default_plan`
+Creates runs with a replacement plan and an explicit clean override in one proxy.
+It checks each status/hash and verifies invalid overrides create no run rows.
+
+### `test_fault_eval_cli_runs_fixed_trajectory_without_scoring_or_mutating_source`
+Runs the CLI evaluator against an imported golden and inspects its JSON and stored run.
+It verifies one observed fault, no claimed scoring, source immutability, and completion metadata.
+
+### `test_evaluator_exercises_tool_fault_and_reproducibility`
+Executes the same tool-error plan twice against one source trace with fixed clocks.
+Observed tool errors and canonical fault rows must agree while the source tool result remains valid.
+
+### `test_fault_eval_usage_errors_are_exit_two`
+Exercises empty databases and invalid plans through the evaluation CLI.
+Both must report configuration errors rather than returning an unearned successful result.
+
+### `test_evaluator_finalizes_run_when_fault_storage_fails` and `fail_storage`
+The helper makes label insertion fail during the proxy request.
+The test requires propagation of the infrastructure error, an agent_error run with
+context, and no fault label claiming a successful delivery.
+
+### `test_proxy_cli_fault_flag_loads_plan_before_starting_server` and `fake_serve`
+The fake server checks the startup run contains the loaded plan and digest for both modes.
+The CLI test verifies --faults wiring without opening a socket or calling a live model.
