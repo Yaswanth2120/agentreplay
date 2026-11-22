@@ -23,9 +23,9 @@ agentreplay replay --trace-id <id> --mode strict --port 9000
 ```
 
 ## Status
-- [x] Pydantic trace schema (v4), SQLite store, strict/lenient replayer, record/replay proxy, CLI, tests
+- [x] Pydantic trace schema (v5), SQLite store, strict/lenient replayer, record/replay proxy, CLI, tests
 - [x] Streaming capture/replay, interleaved tool-call reassembly, partial-error capture, and stream/non-stream mismatch warnings (M1 offline tests)
-- [ ] Fault injection (timeout, malformed JSON, wrong tool call, loop)
+- [x] Versioned seeded fault plans, all 11 fault classes, persisted labels, and fixed-trajectory fault exercise (M5)
 - [ ] Failure detector + labeled eval set (200 tasks x 3 trials)
 - [x] In-process Python tool capture/replay, decorator API, and minimal HTTPX agent (M2 offline tests)
 - [x] Run lifecycle, validated trace export/import, inspection CLI, and two offline golden traces (M3)
@@ -65,7 +65,7 @@ available as `app.state.run_id`, and warnings can be read through
 `TraceStore.findings(run_id)`. Run completion is available through `RunRecorder`, and `show` includes persisted
 runs and findings. Per-request run routing is available through `X-AgentReplay-Run` (see M4 below).
 
-The current schema v4 records a database-level version in `schema_meta`. Older/unversioned
+The current schema v5 records a database-level version in `schema_meta`. Older/unversioned
 or newer databases raise `SchemaVersionError` when opened; use a new database
 path. There is no migration in this pre-release milestone.
 
@@ -310,5 +310,114 @@ TestClient deprecation warning remains. Schema v4 and golden artifact bytes are
 unchanged. Live vLLM fixtures, the Python CI matrix, and the previously noted
 health/model endpoints remain unfinished outside this milestone.
 
-Development now uses dedicated feature branches and GitHub pull requests. M4 is
-on `feature/m4-replay-engine`; local checks run before committing and publishing.
+Development uses dedicated feature branches and GitHub pull requests. M4 was
+merged through [PR #1](https://github.com/Yaswanth2120/agentreplay/pull/1); M5 uses
+`feature/m5-fault-injection`. Local checks run before committing and publishing.
+
+
+## M5: seeded fault injection
+
+`examples/faults.yaml` is a version-1 plan that injects HTTP 429 at exchange sequence
+0. After installing `.[dev]` and activating the virtualenv, exercise it offline:
+
+```bash
+PYTHONPATH=src agentreplay import --db faults.db --in tests/golden/minimal-add.jsonl
+PYTHONPATH=src agentreplay eval faults --db faults.db --plan examples/faults.yaml --trace-id minimal-add
+PYTHONPATH=src agentreplay show --db faults.db --trace-id minimal-add
+```
+
+Use a fresh database path. The evaluation returns JSON containing a run ID, SHA-256
+plan ID, mutated exchanges/tool observations, errors, skips, pending loops, and
+persisted fault rows. `show` prints those rows alongside the run and findings.
+This sequence was verified from the terminal, with `PYTHONPATH=src` set explicitly
+for the local source checkout. An editable-install import issue in this environment
+remains to be rechecked during M10's fresh-virtualenv validation.
+
+The M5 command is a **fixed recorded trajectory**, marked `scored: false`: it walks
+the stored requests and tool calls by sequence, placing exchanges before tools on
+tied sequence numbers. It does not execute an adaptive agent, feed mutated results
+into later request construction, score task success, or compute detector metrics.
+Those capabilities belong to later milestones. Source trace rows remain unchanged;
+fault labels and the new replay run are persisted separately. Replay observations
+are retained in memory and emitted in the command's JSON, not saved as a second
+trace. Durable observed RunViews for detector evaluation remain M6 integration work.
+
+Plans contain `version: 1`, an integer `seed`, and a list of faults. Each fault has
+`class`, `target`, exactly one selector, and optional class-specific `params`:
+
+```yaml
+version: 1
+seed: 1234
+faults:
+  - class: tool_exec_error
+    target: tool_event
+    select: {every_nth: 3}
+    params: {exception: ValueError, message: simulated tool failure}
+```
+
+Sequence numbers are zero-based: `seq: [2]` selects the third event;
+`every_nth: 3` selects sequences 2, 5, 8; `probability: 0.1` uses seeded draws.
+Probability draws are generated in canonical `(sequence, rule-index)` order for all
+probability rules, regardless of target or arrival/completion order, and cached.
+Every run owns its own selector. The same plan and recorded inputs therefore choose
+the same injections; random row IDs, run IDs, and timestamps are not reproducibility
+signals. Tests compare the fault-class/target/sequence/params columns directly.
+
+Unknown classes, versions, targets, selectors, parameters, and invalid values fail
+with `FaultPlanError`. The plan ID hashes canonical validated JSON including filled
+defaults, so YAML whitespace and mapping order do not change it. The normalized
+plan is saved in `run.config.fault_plan`; the digest is `runs.fault_plan_id`.
+The first applicable selected rule wins for each event. Ineligible tool mutations
+are skipped without creating a false injected-fault label.
+
+| Class | Target | Parameters / behavior |
+|---|---|---|
+| `llm_timeout` | exchange | `delay_ms` defaults to 301000; record/live delay then HTTP 504; replay immediate 504 with marker |
+| `llm_http_error` | exchange | `status` defaults to 500; integer 400–599 |
+| `llm_malformed_json` | exchange | Truncate the canonical response JSON halfway; retain raw malformed data |
+| `llm_empty_response` | exchange | Set `choices` to an empty list |
+| `tool_args_corrupt` | exchange | Make the first tool call's arguments invalid JSON |
+| `tool_wrong_name` | exchange | `name` defaults to `__undefined_tool__`; ensure it is not a declared tool |
+| `tool_args_schema_violation` | exchange | Choose valid JSON rejected by that tool's declared JSON schema |
+| `tool_loop` | exchange or tool_event | `repeat` defaults to 5 and must be at least 3; repeat identical name/args with unique call IDs |
+| `tool_exec_timeout` | tool_event | Raise `TimeoutError`; configurable `message` |
+| `tool_exec_error` | tool_event | Configurable `exception` and `message`; default RuntimeError |
+| `tool_bad_result` | tool_event | Require a declared result `schema`; `value` defaults to null and must violate it |
+
+Execution-error exceptions are RuntimeError, ValueError, TypeError, OSError,
+KeyError, TimeoutError, or ConnectionError. Params must be JSON-native values with
+string object keys. JSON Schema uses local Draft 2020-12 validation; external
+schema references are rejected so replay cannot resolve schemas over the network.
+Bad-result injection skips a base result that already violates the declared shape.
+
+An exchange-targeted loop repeats the first tool call in that response. A
+tool-event-targeted loop schedules that tool's name/args in the next eligible LLM
+response; it is logged against the original tool sequence only when that response
+is actually changed. A scheduled loop with no following eligible response remains
+pending and is not falsely logged as injected. Additional tool calls may legitimately
+cause replay misses because the recording has no corresponding tool results.
+
+Pass `--faults plan.yaml` to either `agentreplay record` or `agentreplay replay`.
+The API equivalent is `create_app(..., faults=FaultPlan.load(path))`. Proxy control
+runs inherit this plan; `config.fault_plan` can supply another validated plan or null
+to disable it for an individual run. All runs keep separate runtime/selection state.
+For record/live Python tools, share `faults=app.state.runs.faults(run_id)` with the
+tool recorder. Replay tools sharing `session=app.state.runs.session(run_id)` inherit
+its runtime automatically. A standalone recorder also accepts `faults=FaultPlan`.
+
+Fault rows are committed before a mutated value or injected exception is exposed.
+Tool faults happen after the real/replayed base result, so record-mode side effects
+are not rolled back. Record/live tool events are updated to the observed result or
+error; replay never changes the source event. HTTP errors/timeouts selected before
+upstream bypass it, and timeout rows exist before the live delay begins. Live timeout
+delays use the configured plan value; choose it to exceed the client's timeout.
+Replay never sleeps. Streams selected for content mutation are buffered and then
+re-emitted as mutated SSE; clean streams retain progressive passthrough behavior.
+
+Schema v5 adds the `faults` table. Older databases are rejected without migration;
+golden files were regenerated with the committed script, changing only their schema
+header from v4 to v5. M5 verification: 218 tests pass with socket connections blocked,
+and Ruff passes. Every class has a mutated-output test, both tool modes are covered,
+and seeded fault-row reproducibility, source immutability, delayed-label ordering,
+plan hashes, CLI wiring, and failure cleanup are tested. The existing TestClient
+deprecation warning remains. No GPU or live LLM was used.

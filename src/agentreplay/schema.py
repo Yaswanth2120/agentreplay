@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .canonical import LENIENT_KEYS, STRICT_KEYS, canonical_hash
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 EXPORT_FORMAT = "agentreplay.trace.v1"
 
 
@@ -164,3 +164,13 @@ class FinishRunRequest(BaseModel):
     outcome: RunOutcome = "completed"
     task_success: bool | None = None
     detail: str | None = None
+
+
+class Fault(BaseModel):
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex)
+    run_id: str
+    fault_class: str
+    target: Literal["exchange", "tool_event"]
+    target_seq: int
+    params: dict[str, Any] = Field(default_factory=dict)
+    created_at: float = Field(default_factory=time.time)

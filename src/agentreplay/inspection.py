@@ -47,6 +47,15 @@ def render_trace(store: TraceStore, trace_id: str) -> str:
         lines.append(
             json.dumps(run.model_dump(), ensure_ascii=False, sort_keys=True, indent=2)
         )
+        for fault in store.faults(run.id):
+            lines.append(
+                f"Fault: {fault.fault_class} at {fault.target} {fault.target_seq}"
+            )
+            lines.append(
+                json.dumps(
+                    fault.model_dump(), ensure_ascii=False, sort_keys=True, indent=2
+                )
+            )
         for finding in store.findings(run.id):
             lines.append(f"Finding: {finding.severity} {finding.kind}")
             lines.append(

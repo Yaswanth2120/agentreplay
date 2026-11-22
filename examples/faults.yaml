@@ -1,0 +1,7 @@
+version: 1
+seed: 1234
+faults:
+  - class: llm_http_error
+    target: exchange
+    select: {seq: [0]}
+    params: {status: 429}

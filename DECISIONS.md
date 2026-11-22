@@ -286,3 +286,106 @@
   previously documented. CI/Python-version coverage remains M10. No fault plans,
   M6 detectors, or live evaluation are claimed, and server shutdown still does not
   infer an agent's completion; use explicit finish or RunRecorder.
+
+## M5 — seeded fault injection (2026-11-21)
+
+- **Workflow:** M4 PR #1 was squash-merged as c177499. Start M5 from updated main
+  on feature/m5-fault-injection; publish a separate reviewable PR, without starting
+  M6 or merging M5 automatically.
+- **Schema v5:** add exactly section 5's faults table and Fault model. Existing run
+  plan/config columns are reused. Reject v4 databases explicitly, extend the version
+  test, and regenerate both golden fixtures using the committed generator. Only the
+  schema header changes; request/response/tool data and hashes are unchanged.
+- **Dependencies:** add only the approved PyYAML and jsonschema libraries. Use
+  safe_load, strict Pydantic validation, and Draft 2020-12 schema checks. No SDK,
+  numerical library, ORM, or new external service is introduced.
+- **Plan validation:** version 1 and integer seed, known class/target combinations,
+  exactly one of seq/probability/every_nth, unique nonnegative explicit sequences,
+  probability in [0,1], and positive every_nth. Reject unknown params and non-JSON
+  native values/keys. Normalize by filling class defaults, then hash canonical JSON
+  of the complete validated plan. Whitespace/mapping order are irrelevant; array
+  order and explicitly different numeric types in arbitrary params still matter.
+- **Canonical randomness:** use random.Random(seed), generating slots in ascending
+  sequence and plan-rule order for all probability rules, regardless of event
+  target. Cache slots when a higher sequence arrives first. Explicit/nth selectors
+  consume no draws. nth counts positions starting at 1 over zero-based seq. This
+  avoids arrival-order-dependent fault choices without changing global RNG state.
+- **Precedence:** first applicable selected rule wins for each event. Missing tool
+  calls or unconstrained schemas make tool-response mutations ineligible; expose
+  skips instead of writing a ground-truth label for a value never injected.
+  Standalone empty plans are valid clean controls. Reproducibility comparisons use
+  fault_class/target/target_seq/params, excluding random identities and wall time.
+- **Mutation ownership:** faults.py owns plan models, selectors, and pure mutation
+  functions; fault_runtime.py is their run-bound caller and writes through store
+  methods. Runtime verifies the persisted unfinished run's plan hash/config, and
+  exposes observed values separately from ground-truth rows. A failure to persist a
+  fault prevents delivery. Closed runtimes reject further injection/tool calls.
+- **HTTP faults:** when the first selected applicable preflight rule is HTTP error
+  or timeout, synthesize it without upstream access. Body/tool-call mutations need
+  the upstream/recorded response before applicability is known; if an earlier
+  selected mutation is ineligible, a later HTTP fault may apply after upstream.
+  Errors use an OpenAI-style error object; timeout is 504 with a marker. Record/live
+  timeout waits delay_ms (default 301000), which users should set above their
+  client's timeout; replay ignores delay and returns immediately. Persist the label
+  before delaying, and save the exchange in finally even if delay is cancelled.
+- **Malformed and streamed data:** truncate canonical full response JSON halfway;
+  retain raw malformed text in error with response=None. For streaming, emit a
+  malformed data line without fabricating a valid completion. Selected content
+  mutations buffer/reassemble the stream before applying and emitting SSE; normal
+  unselected streams keep M1 progressive passthrough. Recorded source rows describe
+  the delivered mutated response/chunks, and replay source rows remain immutable.
+- **Tool arguments/names:** corrupt the first call's argument JSON, choose an
+  undefined name with deterministic underscore collision avoidance, or find a valid
+  JSON value rejected by its declared schema. Local schema references are allowed;
+  external $ref/$dynamicRef are rejected before resolution to preserve offline
+  replay. A schema accepting every candidate yields a skip rather than a false
+  injection label.
+- **Loop targets:** support both exchange and section 9's example tool_event target.
+  An exchange loop repeats the first emitted call; a tool event schedules its
+  name/args for the next eligible LLM response. Repeated calls get unique IDs but
+  identical semantic arguments. Require repeat >=3 to represent the failure class
+  under the stated detector threshold. Log against the original tool sequence only
+  when the next response changes; unfulfilled schedules remain pending, not injected.
+  Do not invent additional replay results to hide the consequent extra-call misses.
+- **Tool execution/results:** hooks run after base execution/replay as section 8
+  requires. No rollback of real tool side effects is implied. Safe built-in error
+  names are explicitly allowed; unknown classes fail at load. Bad-result plans must
+  declare a result schema and supply (or default to null for) a value violating it;
+  skip already-invalid base JSON values (validate the captured projection, so a
+  serializable Python tuple is an array). Persist injected record/live outcomes into the
+  existing event; replay only captures observed copies. Natural base errors are
+  observed without being mislabeled as injections. Legacy callable hooks retain
+  their M2 behavior and storage semantics.
+- **Sharing and configuration:** replay session owns its runtime; manager exposes
+  the same runtime for proxy and tools. Record/live callers share the manager's
+  runtime explicitly. Standalone ToolRecorder can take a FaultPlan and creates a
+  run with the normalized plan/hash. Reject cross-store/trace/run runtime bindings.
+  Control runs inherit the factory plan or override it using config.fault_plan;
+  explicit null disables it, and invalid overrides fail before a run row is created.
+- **Eval skeleton honesty:** eval faults walks stored event sequences, with exchanges
+  before tools on ties, and never calls a real tool/upstream. It does not execute
+  an adaptive agent or feed mutated results into subsequent requests. Report
+  execution=fixed-recorded-trajectory and scored=false, with observations/errors,
+  skips, pending loops, and labels. Store that execution mode in run.config and leave
+  task_success unset. No detector precision/recall, task score, or robustness claim
+  is made. Finish even on infrastructure failures; the caller owns the store.
+- **Observations and future M6:** mutated replay observations are memory objects
+  and JSON command output; ground-truth rows are durable. Do not reconstruct detector
+  findings from labels. M6 must integrate observed RunViews independently, including
+  durable observations needed by detect-after-restart, before reporting scores.
+- **Verification:** 218 pytest cases pass offline, with sockets blocked and Ruff
+  clean. Every fault class has a mutated-output test, including tool-targeted loops;
+  tests cover record/replay tools, stream mutations, instant replay, logging before
+  live delay/delivery, actual stored-trace fault-row reproducibility, source
+  immutability, plan IDs, invalid loads, CLI flags/evaluation, and failure cleanup.
+  Terminal import/eval faults/show plus clean check were run with a scoped
+  PYTHONPATH=src and the example plan: one persisted 429 fault, SHA-256 plan ID,
+  scored=false, clean goldens pass.
+- **Environment note:** after refreshing the editable install, this environment's
+  standalone interpreter still did not resolve agentreplay from src automatically.
+  Explicit PYTHONPATH=src was used for generator/terminal smoke checks; pytest
+  already declares its source paths. Do not claim fresh-virtualenv installation
+  validation is fixed or complete; investigate it in M10. The existing TestClient
+  warning and previously flagged health/model endpoints, non-object upstream JSON,
+  upstream auth, real vLLM fixtures, cross-process consumption, and Python-version
+  CI gaps remain outside M5.

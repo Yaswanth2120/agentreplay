@@ -7,7 +7,9 @@ import sqlite3
 import uvicorn
 
 from .checks import check_golden
+from .evals.faults import evaluate_faults
 from .exportio import export_trace, import_trace
+from .faults import FaultPlan
 from .inspection import render_list, render_run_diff, render_trace
 from .proxy import create_app
 from .store import TraceStore
@@ -20,6 +22,7 @@ def main(argv: list[str] | None = None) -> None:
         command = sub.add_parser(name)
         command.add_argument("--db", default="traces.db")
         command.add_argument("--port", type=int, default=9000)
+        command.add_argument("--faults")
         command.add_argument("--trace-id", default=None, required=(name == "replay"))
         if name == "record":
             command.add_argument("--name", default="unnamed")
@@ -45,6 +48,12 @@ def main(argv: list[str] | None = None) -> None:
     command.add_argument("--golden", required=True)
     command.add_argument("--agent", required=True)
     command.add_argument("--mode", choices=["strict", "lenient"], default="strict")
+    evaluation = sub.add_parser("eval")
+    evaluation_sub = evaluation.add_subparsers(dest="eval_cmd", required=True)
+    command = evaluation_sub.add_parser("faults")
+    command.add_argument("--db", default="traces.db")
+    command.add_argument("--plan", required=True)
+    command.add_argument("--trace-id")
     args = parser.parse_args(argv)
     store = None
     try:
@@ -55,7 +64,10 @@ def main(argv: list[str] | None = None) -> None:
                 raise SystemExit(1)
             return
         store = TraceStore(args.db)
-        if args.cmd == "list":
+        if args.cmd == "eval":
+            result = evaluate_faults(store, FaultPlan.load(args.plan), args.trace_id)
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
+        elif args.cmd == "list":
             print(render_list(store))
         elif args.cmd == "diff":
             print(render_run_diff(store, args.run_a, args.run_b))
@@ -69,9 +81,22 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Imported {trace.id}: {trace.name}")
         else:
             app = (
-                create_app(store, "record", args.trace_id, args.name, args.upstream)
+                create_app(
+                    store,
+                    "record",
+                    args.trace_id,
+                    args.name,
+                    args.upstream,
+                    faults=FaultPlan.load(args.faults) if args.faults else None,
+                )
                 if args.cmd == "record"
-                else create_app(store, "replay", args.trace_id, replay_mode=args.mode)
+                else create_app(
+                    store,
+                    "replay",
+                    args.trace_id,
+                    replay_mode=args.mode,
+                    faults=FaultPlan.load(args.faults) if args.faults else None,
+                )
             )
             print(f"trace_id={app.state.trace_id}")
             uvicorn.run(app, host="127.0.0.1", port=args.port)
