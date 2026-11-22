@@ -95,7 +95,7 @@ matches raise `ToolReplayMiss`. Failed calls are consumed once, just like succes
 Tool snapshots, errors, and latency persist in `tool_events`; replay does not append
 new events to the source trace. Tool args/results/errors may contain sensitive data.
 
-[examples/minimal_agent.py](examples/minimal_agent.py) exposes
+[examples/minimal_agent.py](../examples/minimal_agent.py) exposes
 `await run_agent(client, recorder)` with one arithmetic tool and at most three
 LLM requests. Pass an `httpx.AsyncClient` targeting the proxy and a recorder sharing
 its trace ID and database. In record mode this executes the tool; in replay mode
@@ -519,7 +519,7 @@ remains; no live LLM or GPU was used. Full harness/statistics/reports are M8, li
 GPU evaluation is M9, and CI/release work is M10.
 
 The owner must separately hand-solve the 20 sampled tasks in
-[src/agentreplay/evals/REVIEW.md](src/agentreplay/evals/REVIEW.md), then inspect each
+[src/agentreplay/evals/REVIEW.md](../src/agentreplay/evals/REVIEW.md), then inspect each
 verifier and record solvability/correctness. It remains **PENDING**. Success-rate
 results should not be treated as validated until that review is completed.
 
@@ -625,7 +625,7 @@ M8 used no rental GPU. The M9 section below records the subsequent live stage.
 
 ## M9: live execution (owner review pending)
 
-The [live runbook](docs/LIVE_RUN.md) covers setup, exact serving flags, resume,
+The [live runbook](LIVE_RUN.md) covers setup, exact serving flags, resume,
 streaming smoke capture, manual labeling, and verified copies off the rented GPU.
 `eval.yaml` pins Qwen3-8B model/tokenizer revisions and vLLM, sets bounded generation
 with thinking disabled, and defines all 12 independent fault variants. The GPU
@@ -652,7 +652,7 @@ runs, followed by 2,400 repeat replays, 600 regression replays, and 5,532 fault
 replays. The actual streamed tool capture is committed under `tests/fixtures/vllm/`
 and passes an offline byte-for-byte replay test without tool execution.
 
-The generated [live report](reports/summary.md) and JSON retain n for every rate.
+The generated [live report](../reports/summary.md) and JSON retain n for every rate.
 These are preliminary programmatic results: the owner's 20-task review and
 100 blind labels remain pending. The report explains repeat determinism, conditional
 clean-source FP eligibility, loop sequence-localization penalties, and unscored

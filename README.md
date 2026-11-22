@@ -115,7 +115,9 @@ Given the same trace, the same agent code, and an agent that is deterministic gi
 - [x] M1–M8 automated implementation: streams, tool replay, run isolation, portable traces, faults, detectors, 200 tasks, verifiers, evaluation, and statistics.
 - [x] M9 live recordings and replay/fault evaluation; verified database and golden exports saved off the GPU.
 - [ ] Owner review of 20 tasks and blind labels on 100 natural runs.
-- [ ] M10 clean-clone CI matrix and fresh-environment quickstart verified.
+- [x] M10 clean-clone CI matrix (Python 3.10–3.12) and fresh Python 3.12 quickstart verified.
 - [ ] Final release review and `v0.1.0` tag.
 
 Development uses feature branches and pull requests. Run `make test`, `make lint`, and `make check-golden` before submitting changes. CI installs the package and runs the same offline checks on Python 3.10, 3.11, and 3.12; tests block real socket connections. Dependency installation itself requires network access. Only the dependencies declared in `pyproject.toml` are required; vLLM is external to the library.
+
+M10 verification: **676 tests passed** locally and on each GitHub matrix version; Ruff, installed golden checks, and trace round trips passed. The quickstart was run verbatim from a clean checkout in a new Python 3.12 virtualenv. See the [CI run](https://github.com/Yaswanth2120/agentreplay/actions/runs/45072530092). The existing FastAPI/Starlette TestClient HTTPX deprecation warning is retained; no unapproved dependency was added.
