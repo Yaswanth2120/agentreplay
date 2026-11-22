@@ -1,0 +1,39 @@
+name: Offline checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install package and approved development tools
+        run: python -m pip install '.[dev]'
+      - name: Lint
+        run: ruff check .
+      - name: Offline tests (socket connections blocked by conftest)
+        run: pytest -q
+      - name: Replay golden traces with installed CLI
+        run: agentreplay check --golden tests/golden --agent examples.minimal_agent:run_agent
+      - name: Verify portable trace round trip
+        run: |
+          agentreplay import --db demo.db --in tests/golden/minimal-add.jsonl
+          agentreplay list --db demo.db
+          agentreplay show --db demo.db --trace-id minimal-add
+          agentreplay export --db demo.db --trace-id minimal-add --out exported.jsonl
+          cmp tests/golden/minimal-add.jsonl exported.jsonl
