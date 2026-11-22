@@ -6,6 +6,7 @@ from .detectors import DETECTOR_KINDS, detect
 from .schema import (
     DetectorConfig,
     DetectorRun,
+    EvaluationResult,
     Finding,
     Run,
     RunObservations,
@@ -73,6 +74,7 @@ def finish_run(
     task_success: bool | None = None,
     detail: str | None = None,
     findings: list[Finding] | None = None,
+    evaluation: EvaluationResult | None = None,
 ) -> Run:
     finished = run.model_copy(
         update={
@@ -91,4 +93,5 @@ def finish_run(
         detail=detail,
         findings=[*(findings or []), *detected],
         observations=observations,
+        evaluation=evaluation,
     )

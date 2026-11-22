@@ -10,7 +10,14 @@ from types import TracebackType
 from .detection import finish_run
 from .fault_runtime import FaultRuntime
 from .replay import ReplaySession
-from .schema import DetectorConfig, Run, RunObservations, RunOutcome
+from .schema import (
+    DetectorConfig,
+    EvaluationResult,
+    Finding,
+    Run,
+    RunObservations,
+    RunOutcome,
+)
 from .store import TraceStore
 
 
@@ -146,6 +153,8 @@ class RunManager:
         *,
         task_success: bool | None = None,
         detail: str | None = None,
+        findings: list[Finding] | None = None,
+        evaluation: EvaluationResult | None = None,
     ) -> Run:
         with self._lock:
             run = self.get_run(run_id)
@@ -153,7 +162,11 @@ class RunManager:
                 raise ValueError("cannot finish a run while requests are in flight")
             if run.kind == "replay":
                 return self.session(run_id).finish(
-                    outcome, task_success=task_success, detail=detail
+                    outcome,
+                    task_success=task_success,
+                    detail=detail,
+                    findings=findings,
+                    evaluation=evaluation,
                 )
             runtime = self.faults(run_id)
             return finish_run(
@@ -163,6 +176,8 @@ class RunManager:
                 finished_at=self.clock(),
                 task_success=task_success,
                 detail=detail,
+                findings=findings,
+                evaluation=evaluation,
                 observations=RunObservations(
                     exchanges=runtime.observed_exchanges,
                     tool_events=runtime.observed_tools,

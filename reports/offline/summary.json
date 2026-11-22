@@ -1,0 +1,593 @@
+{
+  "config": {
+    "backend": "scripted",
+    "date": "2026-11-22T18:19:22.008287+00:00",
+    "evaluation_id": "e807ca8bb4d44eeeb1f746f1ad80be9a",
+    "git_sha": "387a2c98aec2a778541b2d3442bb0129267fd31f",
+    "model": "scripted-offline",
+    "owner_review": "pending",
+    "task_ids": [
+      "calc-001",
+      "calc-017",
+      "calc-033",
+      "calc-034",
+      "kv-001",
+      "kv-017",
+      "kv-033",
+      "kv-034",
+      "files-001",
+      "files-017",
+      "files-033",
+      "files-034",
+      "search-001",
+      "search-017",
+      "search-033",
+      "search-034",
+      "tickets-001",
+      "tickets-017",
+      "tickets-033",
+      "tickets-034"
+    ],
+    "tasks_version": "tasks-v1-sha256:a84d51fb1a95bff5587ec8a2b18543c9d15c41211bc1765a38e9483d6f095ae0",
+    "temperature": 0.7,
+    "trials": 3,
+    "versions": [
+      "v1",
+      "v2"
+    ],
+    "vllm_flags": [],
+    "vllm_version": "not-used-scripted"
+  },
+  "metrics": {
+    "clean_false_positives": {
+      "any": {
+        "ci95": [
+          0.0,
+          0.020235089029327337
+        ],
+        "method": "Wilson",
+        "n": 186,
+        "successes": 0,
+        "value": 0.0
+      },
+      "per_kind": {
+        "budget_exceeded": {
+          "ci95": [
+            0.0,
+            0.020235089029327337
+          ],
+          "method": "Wilson",
+          "n": 186,
+          "successes": 0,
+          "value": 0.0
+        },
+        "invalid_tool_call": {
+          "ci95": [
+            0.0,
+            0.020235089029327337
+          ],
+          "method": "Wilson",
+          "n": 186,
+          "successes": 0,
+          "value": 0.0
+        },
+        "llm_error": {
+          "ci95": [
+            0.0,
+            0.020235089029327337
+          ],
+          "method": "Wilson",
+          "n": 186,
+          "successes": 0,
+          "value": 0.0
+        },
+        "loop": {
+          "ci95": [
+            0.0,
+            0.020235089029327337
+          ],
+          "method": "Wilson",
+          "n": 186,
+          "successes": 0,
+          "value": 0.0
+        },
+        "malformed_response": {
+          "ci95": [
+            0.0,
+            0.020235089029327337
+          ],
+          "method": "Wilson",
+          "n": 186,
+          "successes": 0,
+          "value": 0.0
+        },
+        "timeout": {
+          "ci95": [
+            0.0,
+            0.020235089029327337
+          ],
+          "method": "Wilson",
+          "n": 186,
+          "successes": 0,
+          "value": 0.0
+        },
+        "tool_error": {
+          "ci95": [
+            0.0,
+            0.020235089029327337
+          ],
+          "method": "Wilson",
+          "n": 186,
+          "successes": 0,
+          "value": 0.0
+        }
+      }
+    },
+    "injected": {
+      "n_runs": 60,
+      "per_kind": {
+        "budget_exceeded": {
+          "f1": {
+            "ci95": null,
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 0,
+            "value": null
+          },
+          "fn": 0,
+          "fp": 0,
+          "precision": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "recall": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "tp": 0
+        },
+        "invalid_tool_call": {
+          "f1": {
+            "ci95": null,
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 0,
+            "value": null
+          },
+          "fn": 0,
+          "fp": 0,
+          "precision": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "recall": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "tp": 0
+        },
+        "llm_error": {
+          "f1": {
+            "ci95": [
+              0.9227378355571899,
+              1.0
+            ],
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 60,
+            "value": 1.0
+          },
+          "fn": 0,
+          "fp": 0,
+          "precision": {
+            "ci95": [
+              0.93982814785791,
+              0.9999999999999998
+            ],
+            "method": "Wilson",
+            "n": 60,
+            "successes": 60,
+            "value": 1.0
+          },
+          "recall": {
+            "ci95": [
+              0.93982814785791,
+              0.9999999999999998
+            ],
+            "method": "Wilson",
+            "n": 60,
+            "successes": 60,
+            "value": 1.0
+          },
+          "tp": 60
+        },
+        "loop": {
+          "f1": {
+            "ci95": null,
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 0,
+            "value": null
+          },
+          "fn": 0,
+          "fp": 0,
+          "precision": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "recall": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "tp": 0
+        },
+        "malformed_response": {
+          "f1": {
+            "ci95": null,
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 0,
+            "value": null
+          },
+          "fn": 0,
+          "fp": 0,
+          "precision": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "recall": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "tp": 0
+        },
+        "timeout": {
+          "f1": {
+            "ci95": null,
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 0,
+            "value": null
+          },
+          "fn": 0,
+          "fp": 0,
+          "precision": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "recall": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "tp": 0
+        },
+        "tool_error": {
+          "f1": {
+            "ci95": null,
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 0,
+            "value": null
+          },
+          "fn": 0,
+          "fp": 0,
+          "precision": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "recall": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "tp": 0
+        }
+      },
+      "unit": "unique kind/target/sequence claims per run, one-to-one matching; task_failure is run-level and not localized",
+      "unscored_faults": 0
+    },
+    "manual": {
+      "per_kind": {
+        "invalid_tool_call": {
+          "f1": {
+            "ci95": null,
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 0,
+            "value": null
+          },
+          "fn": 0,
+          "fp": 0,
+          "n_labeled": 0,
+          "precision": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "recall": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "tn": 0,
+          "tp": 0
+        },
+        "loop": {
+          "f1": {
+            "ci95": null,
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 0,
+            "value": null
+          },
+          "fn": 0,
+          "fp": 0,
+          "n_labeled": 0,
+          "precision": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "recall": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "tn": 0,
+          "tp": 0
+        },
+        "timeout": {
+          "f1": {
+            "ci95": null,
+            "method": "conservative harmonic bounds from 97.5% Wilson precision/recall intervals",
+            "n": 0,
+            "value": null
+          },
+          "fn": 0,
+          "fp": 0,
+          "n_labeled": 0,
+          "precision": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "recall": {
+            "ci95": null,
+            "method": "Wilson",
+            "n": 0,
+            "successes": 0,
+            "value": null
+          },
+          "tn": 0,
+          "tp": 0
+        }
+      },
+      "unit": "one presence label per run/kind; sequence annotations are informational; separate from injection scoring"
+    },
+    "n_runs": 480,
+    "paired": {
+      "mcnemar": {
+        "discordant_n": 27,
+        "method": "two-sided exact McNemar",
+        "n": 60,
+        "p_value": 1.4901161193847656e-08,
+        "v1_only_success": 27,
+        "v2_only_success": 0
+      },
+      "success_difference": {
+        "ci95": [
+          -0.5666666666666667,
+          -0.3329166666666727
+        ],
+        "method": "paired percentile bootstrap; v2 minus v1",
+        "n": 60,
+        "resamples": 10000,
+        "seed": 1234,
+        "value": -0.45
+      }
+    },
+    "regression_divergence": {
+      "ci95": [
+        0.3309365440675524,
+        0.5750806411466566
+      ],
+      "method": "Wilson",
+      "n": 60,
+      "successes": 27,
+      "value": 0.45
+    },
+    "regression_kinds": {
+      "replay_leftover": {
+        "ci95": [
+          0.3309365440675524,
+          0.5750806411466566
+        ],
+        "method": "Wilson",
+        "n": 60,
+        "successes": 27,
+        "value": 0.45
+      },
+      "replay_miss": {
+        "ci95": [
+          0.3309365440675524,
+          0.5750806411466566
+        ],
+        "method": "Wilson",
+        "n": 60,
+        "successes": 27,
+        "value": 0.45
+      },
+      "replay_order": {
+        "ci95": [
+          0.0,
+          0.06017185214208986
+        ],
+        "method": "Wilson",
+        "n": 60,
+        "successes": 0,
+        "value": 0.0
+      },
+      "tool_replay_miss": {
+        "ci95": [
+          0.0,
+          0.06017185214208986
+        ],
+        "method": "Wilson",
+        "n": 60,
+        "successes": 0,
+        "value": 0.0
+      }
+    },
+    "replay_determinism": {
+      "ci95": [
+        0.9689808335812966,
+        1.0
+      ],
+      "method": "Wilson",
+      "n": 120,
+      "successes": 120,
+      "value": 1.0
+    },
+    "versions": {
+      "v1": {
+        "loop": {
+          "ci95": [
+            0.0,
+            0.06017185214208986
+          ],
+          "method": "Wilson",
+          "n": 60,
+          "successes": 0,
+          "value": 0.0
+        },
+        "mean_steps": {
+          "n": 60,
+          "total": 192,
+          "value": 3.2
+        },
+        "task_success": {
+          "ci95": [
+            0.93982814785791,
+            0.9999999999999998
+          ],
+          "method": "Wilson",
+          "n": 60,
+          "successes": 60,
+          "value": 1.0
+        },
+        "timeout": {
+          "ci95": [
+            0.0,
+            0.06017185214208986
+          ],
+          "method": "Wilson",
+          "n": 60,
+          "successes": 0,
+          "value": 0.0
+        },
+        "tool_call_validity": {
+          "ci95": [
+            0.9842460800584412,
+            1.0
+          ],
+          "method": "Wilson",
+          "n": 240,
+          "successes": 240,
+          "value": 1.0
+        }
+      },
+      "v2": {
+        "loop": {
+          "ci95": [
+            0.0,
+            0.06017185214208986
+          ],
+          "method": "Wilson",
+          "n": 60,
+          "successes": 0,
+          "value": 0.0
+        },
+        "mean_steps": {
+          "n": 60,
+          "total": 192,
+          "value": 3.2
+        },
+        "task_success": {
+          "ci95": [
+            0.4249193588533434,
+            0.6690634559324476
+          ],
+          "method": "Wilson",
+          "n": 60,
+          "successes": 33,
+          "value": 0.55
+        },
+        "timeout": {
+          "ci95": [
+            0.0,
+            0.06017185214208986
+          ],
+          "method": "Wilson",
+          "n": 60,
+          "successes": 0,
+          "value": 0.0
+        },
+        "tool_call_validity": {
+          "ci95": [
+            0.9842460800584412,
+            1.0
+          ],
+          "method": "Wilson",
+          "n": 240,
+          "successes": 240,
+          "value": 1.0
+        }
+      }
+    }
+  },
+  "notes": [
+    "Scripted offline results validate plumbing, not live model capability.",
+    "Owner task hand-solve review is pending; no validated benchmark or significance claim is made.",
+    "Wilson intervals use the displayed count unit; F1 uses conservative harmonic bounds from Bonferroni-adjusted Wilson intervals.",
+    "Trial pairs are resampled as paired observations; repeated tasks/trials and replay repeats are correlated, so generalization is limited.",
+    "Clean FP denominators include both repeats of successful, finding-free source runs. Determinism compares each source's two repeats.",
+    "Task failure is run-level; bad-result faults without localized verification are counted as unscored, never invented detector true positives.",
+    "Manual presence-label scores remain separate from injected sequence-label scores; missing denominators are shown as undefined."
+  ]
+}

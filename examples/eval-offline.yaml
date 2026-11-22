@@ -1,0 +1,36 @@
+backend: scripted
+model: scripted-offline
+versions: [v1, v2]
+trials: 3
+bootstrap_resamples: 10000
+bootstrap_seed: 1234
+regression_seed: 7
+task_ids:
+  - calc-001
+  - calc-017
+  - calc-033
+  - calc-034
+  - kv-001
+  - kv-017
+  - kv-033
+  - kv-034
+  - files-001
+  - files-017
+  - files-033
+  - files-034
+  - search-001
+  - search-017
+  - search-033
+  - search-034
+  - tickets-001
+  - tickets-017
+  - tickets-033
+  - tickets-034
+fault_plan:
+  version: 1
+  seed: 1234
+  faults:
+    - class: llm_http_error
+      target: exchange
+      select: {seq: [0]}
+      params: {status: 429}

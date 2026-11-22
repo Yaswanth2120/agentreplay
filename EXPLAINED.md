@@ -1841,3 +1841,334 @@ Runs the surrounding test scenario with injected local HTTPX transports and expl
 ### `tests/integration/test_reference_agent.py` — `forbidden`
 
 Fails if a tool implementation executes during replay. This makes the zero-execution replay guarantee observable in the integration test.
+
+
+## M8: orchestration, independent scoring, and reports
+
+### `src/agentreplay/schema.py` — `validate_selection`
+
+Rejects duplicate or empty selections and insufficient live provenance. It also prevents a fault-replay configuration without a v1 source.
+
+### `src/agentreplay/store.py` — `all_runs`
+
+Reads all run rows in stable creation order through the store. Report selection can inspect evaluation metadata without introducing SQL elsewhere.
+
+### `src/agentreplay/store.py` — `get_evaluation`
+
+Loads a typed final-answer/state result or returns null if none was committed. Null results let reports distinguish infrastructure failures from verified task failures.
+
+### `src/agentreplay/store.py` — `replace_labels`
+
+Replaces the specified reviewer/run/kind judgments in a single transaction. Duplicate keys and foreign-key failures roll back the entire replacement.
+
+### `src/agentreplay/store.py` — `labels`
+
+Loads typed human labels for one run in stable kind/reviewer order. SQLite presence integers are converted back into strict boolean model fields.
+
+### `src/agentreplay/evals/agent.py` — `execute_call`
+
+Parses tool arguments and executes through either the environment or injected recorder. Known tool and replay errors become explicit error messages that the model can use to recover.
+
+### `src/agentreplay/evals/agent.py` — `invoke_environment`
+
+Adapts keyword tool arguments to the environment dispatcher for ToolRecorder. The same callable can record real execution while replay bypasses it entirely.
+
+### `src/agentreplay/evals/agent.py` — `run_agent`
+
+Drives a bounded HTTPX chat loop using only task instructions and advertised tools. It executes calls in order, supports run routing and recorded tools, and applies the documented seeded skipped-call regression for v2.
+
+### `src/agentreplay/evals/harness.py` — `load_config`
+
+Loads and validates YAML evaluation settings before orchestration starts. Bad YAML and invalid selections fail clearly instead of creating a partial measured cohort.
+
+### `src/agentreplay/evals/harness.py` — `git_revision`
+
+Captures the current Git commit for run provenance. Missing Git or an unavailable repository is recorded explicitly as unknown.
+
+### `src/agentreplay/evals/harness.py` — `reconstruct_state`
+
+Applies consumed successful source actions to a fresh virtual environment in their actual consumption order. It records missing-prerequisite errors and preserves post-execution fault side effects without invoking the replay recorder callback.
+
+### `src/agentreplay/evals/harness.py` — `run_task`
+
+Drives one task through the proxy with an injected recorder and model transport. It verifies final state or answer and atomically persists completion, findings, and result, while infrastructure failures remain incomplete measurements.
+
+### `src/agentreplay/evals/harness.py` — `evaluate`
+
+Executes each configured task, version, and trial before scheduling replay repeats, regressions, and optional faults. Source linkage and shared metadata let a later process validate the complete evaluation cohort.
+
+### `src/agentreplay/evals/harness.py` — `run_evaluation`
+
+Provides a synchronous entry point for the CLI around the asynchronous harness. Python callers already in an event loop can await evaluate directly.
+
+### `src/agentreplay/evals/stats.py` — `wilson`
+
+Computes a score interval from a checked success count and denominator. Zero observations return no interval rather than an invented certainty.
+
+### `src/agentreplay/evals/stats.py` — `rate`
+
+Packages a proportion together with its numerator, denominator, and Wilson interval. Undefined rates keep n=0 and a null value so reports cannot hide missing evidence.
+
+### `src/agentreplay/evals/stats.py` — `harmonic`
+
+Combines precision and recall through their harmonic mean. It handles the both-zero boundary explicitly for F1 confidence bounds.
+
+### `src/agentreplay/evals/stats.py` — `precision_recall`
+
+Computes precision, recall, and F1 from nonnegative TP/FP/FN counts. F1 bounds combine adjusted Wilson intervals instead of pretending doubled true positives are independent binomial trials.
+
+### `src/agentreplay/evals/stats.py` — `percentile`
+
+Interpolates a requested quantile within sorted bootstrap samples. Explicit empty/range checks prevent invalid confidence bounds.
+
+### `src/agentreplay/evals/stats.py` — `paired_values`
+
+Validates aligned boolean success lists and computes v2-minus-v1 differences. Rejecting mismatched pairs prevents an unpaired comparison from being reported as paired.
+
+### `src/agentreplay/evals/stats.py` — `bootstrap_paired`
+
+Resamples aligned differences with a local seeded random generator and returns the mean effect and percentile interval. The seed and resample count travel with the reported n.
+
+### `src/agentreplay/evals/stats.py` — `mcnemar_exact`
+
+Computes the two-sided binomial tail for discordant paired outcomes. It reports both discordant directions and handles no discordances with p=1.
+
+### `src/agentreplay/evals/stats.py` — `expected_kind`
+
+Maps an independently recorded injected fault class/status to its specified detector label. Only the scoring layer sees this ground truth, and unlocalized bad-result faults are not fabricated into detector true positives.
+
+### `src/agentreplay/evals/stats.py` — `injection_scores`
+
+Matches unique detector claims to injected kind/target/sequence labels one-to-one. It reports unmatched claims and labels as FP/FN and discloses unscored run-level fault outcomes.
+
+### `src/agentreplay/evals/stats.py` — `manual_scores`
+
+Scores human presence labels separately by run and kind, including negative labels. Conflicting reviewers must be adjudicated rather than silently pooled.
+
+### `src/agentreplay/evals/stats.py` — `version_metrics`
+
+Computes task success, call validity, loop/timeout frequency, and mean request steps for source runs. Every point estimate carries its actual count unit and denominator.
+
+### `src/agentreplay/evals/stats.py` — `finding_signature`
+
+Removes finding and result identity fields while retaining substantive evidence and verified outcomes. Canonical sets allow replay determinism checks to ignore fresh IDs and timestamps.
+
+### `src/agentreplay/evals/stats.py` — `summarize`
+
+Combines validated cohort records into version, replay, detector, and paired-comparison statistics. All arithmetic stays in this pure module instead of being duplicated in the renderer.
+
+### `src/agentreplay/evals/scripted.py` — `response_message`
+
+Builds a minimal OpenAI-compatible fake response with the appropriate finish reason. The scripted backend uses the real HTTPX/proxy path rather than bypassing agent protocol.
+
+### `src/agentreplay/evals/scripted.py` — `tool_call`
+
+Builds a deterministic fake tool call with canonical argument JSON. Stable call IDs and arguments make unchanged-agent replay reproducible.
+
+### `src/agentreplay/evals/scripted.py` — `scripted_response`
+
+Derives fake responses only from visible instructions and prior tool results. It supports the frozen workflows and is labeled as infrastructure validation rather than model capability.
+
+### `src/agentreplay/evals/labeling.py` — `blind_run`
+
+Loads observed exchanges and tools for a finished natural run without detector or verifier judgments. Replays require an actual snapshot so unconsumed source traffic cannot bias a manual reviewer.
+
+### `src/agentreplay/evals/labeling.py` — `label_run`
+
+Collects all three manual presence answers before saving any labels. It rejects injected runs and replaces only the same reviewer judgments atomically.
+
+### `src/agentreplay/report.py` — `observed_call_count`
+
+Counts emitted calls while tolerating malformed response containers. Invalid non-list call containers count as one observable invalid claim, matching detector accounting.
+
+### `src/agentreplay/report.py` — `load_records`
+
+Loads finished results, observations, labels, faults, and findings for one evaluation ID. Missing results or snapshots cause rejection before any incomplete rate can be rendered.
+
+### `src/agentreplay/report.py` — `validate_cohort`
+
+Checks shared provenance and the expected source/replay membership of one evaluation. It rejects duplicate rows, missing pairs, mismatched source identities, and incorrect clean-source eligibility.
+
+### `src/agentreplay/report.py` — `build_report`
+
+Loads validated records and asks stats.py to compute every metric. It attaches provenance and explicit interpretation limits without deriving alternate arithmetic.
+
+### `src/agentreplay/report.py` — `validate_rates`
+
+Recursively rejects numeric metrics without valid denominators or with non-finite values. A zero denominator permits only an undefined value.
+
+### `src/agentreplay/report.py` — `metric_rows`
+
+Flattens computed metric objects into Markdown rows with their n and intervals. It formats existing values without calculating replacement rates.
+
+### `src/agentreplay/report.py` — `render_markdown`
+
+Writes the configuration block, metric/count tables, paired-test details, and interpretation notes. Validation runs before formatting so missing denominators cannot become plausible-looking output.
+
+### `src/agentreplay/report.py` — `write_report`
+
+Generates JSON and Markdown from the same computed report object. Both encodings are validated before output directories and files are created.
+
+### `tests/test_eval_stats.py` — `test_wilson_against_hand_computed_examples`
+
+Verifies wilson against hand computed examples. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/test_eval_stats.py` — `test_invalid_wilson_inputs_rejected`
+
+Verifies invalid wilson inputs rejected. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/test_eval_stats.py` — `test_precision_recall_f1_counts_and_undefined_cases`
+
+Verifies precision recall f1 counts and undefined cases. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/test_eval_stats.py` — `test_paired_bootstrap_seed_and_hand_computed_distribution`
+
+Verifies paired bootstrap seed and hand computed distribution. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/test_eval_stats.py` — `test_mcnemar_exact_against_binomial_hand_calculation`
+
+Verifies mcnemar exact against binomial hand calculation. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/test_eval_stats.py` — `test_bad_pairs_rejected`
+
+Verifies bad pairs rejected. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/test_eval_stats.py` — `claim`
+
+Builds a small detector claim with explicit exchange/tool namespaces. The scoring test can prove that matching a number in the wrong namespace is not a true positive.
+
+### `tests/test_eval_stats.py` — `fault`
+
+Builds an independent injected-label fixture with class, target, sequence, and params. Scoring expectations are hand-authored rather than taken from detector output.
+
+### `tests/test_eval_stats.py` — `test_injected_scores_match_kind_namespace_and_sequence_without_duplicates`
+
+Verifies injected scores match kind namespace and sequence without duplicates. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/test_eval_stats.py` — `test_one_prediction_does_not_cover_two_injected_labels`
+
+Verifies one prediction does not cover two injected labels. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/test_eval_stats.py` — `test_manual_presence_scores_include_negatives_and_require_adjudication`
+
+Verifies manual presence scores include negatives and require adjudication. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/test_eval_stats.py` — `test_version_metrics_counts_and_stable_finding_sets`
+
+Verifies version metrics counts and stable finding sets. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `full_evaluation`
+
+Runs the committed 20-task configuration into a temporary database and generates both report artifacts. Closing the store before tests use it exercises durable cold-report loading.
+
+### `tests/integration/test_eval_harness.py` — `test_twenty_tasks_three_trials_complete_report_and_cold_reload`
+
+Verifies twenty tasks three trials complete report and cold reload. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_reconstruction_uses_only_consumed_actions_and_handles_missing_prerequisites`
+
+Verifies reconstruction uses only consumed actions and handles missing prerequisites. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_reports_reject_missing_denominators_invalid_values_and_partial_cohorts`
+
+Verifies reports reject missing denominators invalid values and partial cohorts. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_statistics_catch_non_determinism_and_false_positives`
+
+Verifies statistics catch non determinism and false positives. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_evaluation_atomic_rollback_and_persisted_results`
+
+Verifies evaluation atomic rollback and persisted results. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_manual_labeling_is_blind_transactional_repeatable_and_natural_only`
+
+Verifies manual labeling is blind transactional repeatable and natural only. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_invalid_evaluation_config_rejected`
+
+Verifies invalid evaluation config rejected. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_unknown_tasks_and_bad_plans_fail_before_creating_runs`
+
+Verifies unknown tasks and bad plans fail before creating runs. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_agent_and_infrastructure_failures_finalize_without_unearned_success`
+
+Verifies agent and infrastructure failures finalize without unearned success. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_cli_eval_run_report_and_label`
+
+Verifies cli eval run report and label. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_observed_call_count_handles_malformed_containers`
+
+Verifies observed call count handles malformed containers. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_adaptive_fault_replays_produce_observed_failures_without_mutating_source`
+
+Verifies adaptive fault replays produce observed failures without mutating source. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_unfinished_evaluation_is_not_reported_as_completed`
+
+Verifies unfinished evaluation is not reported as completed. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_manual_labels_from_database_remain_separate_from_injections`
+
+Verifies manual labels from database remain separate from injections. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_live_path_uses_injected_upstream_without_opening_a_socket`
+
+Verifies live path uses injected upstream without opening a socket. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_cancelled_agent_is_finalized_as_aborted`
+
+Verifies cancelled agent is finalized as aborted. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_git_revision_is_explicit_when_unavailable`
+
+Verifies git revision is explicit when unavailable. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `test_reconstructed_side_effects_survive_post_execution_tool_fault`
+
+Verifies reconstructed side effects survive post execution tool fault. Explicit counts, states, or error assertions use only local data and injected transports, without a live model.
+
+### `tests/integration/test_eval_harness.py` — `forbidden`
+
+Fails if manual labeling reads detector findings. This makes the independence boundary observable instead of relying on a comment.
+
+### `tests/integration/test_eval_harness.py` — `error_response`
+
+Supplies a fake HTTP429 response to the real proxy. The harness must record the failure and never count it as unearned task success.
+
+### `tests/integration/test_eval_harness.py` — `exercise`
+
+Runs the surrounding asynchronous harness scenario using local injected transports. Explicit store cleanup and assertions keep it offline and isolate each case.
+
+### `tests/integration/test_eval_harness.py` — `fail_verifier`
+
+Raises an explicit verification infrastructure error after agent execution. The test requires finalization without a claimed measured success/result.
+
+### `tests/integration/test_eval_harness.py` — `exchange`
+
+Constructs a typed exchange with an overridable malformed response. This lets call-count accounting be checked independently of HTTP behavior.
+
+### `tests/integration/test_eval_harness.py` — `exercise`
+
+Runs the surrounding asynchronous harness scenario using local injected transports. Explicit store cleanup and assertions keep it offline and isolate each case.
+
+### `tests/integration/test_eval_harness.py` — `upstream`
+
+Captures fake upstream requests before returning scripted results. The live-path test verifies replay does not call that upstream again.
+
+### `tests/integration/test_eval_harness.py` — `cancelled`
+
+Raises cancellation inside agent execution. The harness must persist an aborted run and propagate cancellation rather than generating success statistics.
+
+### `tests/integration/test_eval_harness.py` — `unavailable`
+
+Simulates a missing Git executable. Provenance must become explicitly unknown without preventing offline evaluation.
+
+### `tests/integration/test_eval_harness.py` — `exercise`
+
+Runs the surrounding asynchronous harness scenario using local injected transports. Explicit store cleanup and assertions keep it offline and isolate each case.

@@ -23,13 +23,14 @@ agentreplay replay --trace-id <id> --mode strict --port 9000
 ```
 
 ## Status
-- [x] Pydantic trace schema (v6), SQLite store, strict/lenient replayer, record/replay proxy, CLI, tests
+- [x] Pydantic trace schema (v7), SQLite store, strict/lenient replayer, record/replay proxy, CLI, tests
 - [x] Streaming capture/replay, interleaved tool-call reassembly, partial-error capture, and stream/non-stream mismatch warnings (M1 offline tests)
 - [x] Versioned seeded fault plans, all 11 fault classes, persisted labels, and fixed-trajectory fault exercise (M5)
 - [x] Pure failure detectors, durable observed run views, and detection CLI (M6 offline tests)
 - [x] Five deterministic environments, 200 frozen tasks, independent verifiers, reference agent v1/v2 (M7 automated checks)
 - [ ] Owner hand-solve review of 20 tasks
-- [ ] Evaluation harness and measured detector precision/recall (200 tasks x 3 trials)
+- [x] Evaluation harness, statistics, and generated reports (M8: 20 tasks × 3 trials per version, offline)
+- [ ] Full live evaluation (200 tasks × 3 trials per version) and 100 manual natural-run labels
 - [x] In-process Python tool capture/replay, decorator API, and minimal HTTPX agent (M2 offline tests)
 - [x] Run lifecycle, validated trace export/import, inspection CLI, and two offline golden traces (M3)
 - [x] Per-run replay, structured divergences, control endpoints, run diff, and offline golden-check CLI (M4)
@@ -68,7 +69,7 @@ available as `app.state.run_id`, and warnings can be read through
 `TraceStore.findings(run_id)`. Run completion is available through `RunRecorder`, and `show` includes persisted
 runs and findings. Per-request run routing is available through `X-AgentReplay-Run` (see M4 below).
 
-The current schema v6 records a database-level version in `schema_meta`. Older/unversioned
+The current schema v7 records a database-level version in `schema_meta`. Older/unversioned
 or newer databases raise `SchemaVersionError` when opened; use a new database
 path. There is no migration in this pre-release milestone.
 
@@ -186,7 +187,7 @@ It rejects unknown formats/schema versions, missing or extra fields, malformed
 JSON, invalid UTF-8, non-finite numbers, mismatched hashes/trace IDs, duplicate IDs,
 and unordered or duplicate sequences within either event type. Database conflicts
 roll back the whole import. Re-importing the same trace is an error rather than an
-implicit overwrite. The current schema is v4; older databases need a fresh path.
+implicit overwrite. The current schema is v7; older databases need a fresh path.
 The export format remains provisional until the M10 freeze.
 
 For an agent executed in process, wrap its execution in a run context:
@@ -509,7 +510,7 @@ access the host filesystem; search reads only its packaged corpus fixture.
 Tasks live in `src/agentreplay/evals/data/tasks.jsonl`; the corpus is beside it.
 `load_tasks()` validates models/IDs and `tasks_version()` returns the SHA256 of
 exact task-file bytes with a `tasks-v1` prefix. Freeze these files: any later
-correction must be treated as a new evaluation version. M8 will record that
+correction must be treated as a new evaluation version. M8 records that
 version in every run; this milestone does not implement the harness or scoring.
 To reproduce artifacts in a temporary directory without overwriting frozen data:
 
@@ -556,3 +557,103 @@ The owner must separately hand-solve the 20 sampled tasks in
 [src/agentreplay/evals/REVIEW.md](src/agentreplay/evals/REVIEW.md), then inspect each
 verifier and record solvability/correctness. It remains **PENDING**. Success-rate
 results should not be treated as validated until that review is completed.
+
+
+## M8: evaluation harness and generated reports
+
+Run the committed scripted configuration without a model or GPU:
+
+```bash
+make eval-offline PYTHON=.venv/bin/python DB=/tmp/agentreplay-m8.db
+make report PYTHON=.venv/bin/python DB=/tmp/agentreplay-m8.db OUT=reports/offline
+```
+
+Use a fresh DB path for schema v7; older databases are rejected without migration.
+The new `evaluation_results` table stores final answers, verification state, and
+reconstruction errors atomically with run finish, snapshots, and findings. Schema
+v7 also adds the specified `eval_labels` table. Committed golden files were
+regenerated, changing only the version header. No earlier tests were removed.
+
+Equivalent CLI: `agentreplay eval run --db DB --config examples/eval-offline.yaml`
+and `agentreplay report --db DB --out reports/offline`. The run command returns
+an evaluation ID; report accepts `--evaluation-id ID` to select it explicitly,
+or selects the most recent cohort. It refuses missing/unfinished results,
+inconsistent metadata, duplicate rows, missing task/trial/version pairs, or
+incomplete replay phases. Re-reporting the same DB produces identical files.
+Re-executing evaluation creates a new cohort; retry-safe live resume is M9 work.
+
+The committed configuration selects 20 tasks across all five environments and
+runs three trials of both v1/v2. It records 120 source runs, repeats each twice
+(240 replays), runs v2 against 60 v1 traces, and applies an HTTP429 fault plan to
+60 clean v1 traces: 480 runs total. Every source uses a fresh seeded environment;
+sampling is temperature 0.7 and seed=trial. Run config records the model, agent
+version, task-file hash, vLLM version/flags, git SHA, source linkage, phase, and
+backend. `scripted` is an explicitly fake LLM which uses only visible instructions
+and tool results. These reports test infrastructure, not live model capability.
+The generated examples are in `reports/offline/summary.{md,json}`.
+
+The packaged reference implementation now lives in `agentreplay.evals.agent`;
+`examples/reference_agent.py` preserves the existing imports. Installed CLI runs
+therefore do not depend on a source-checkout-only examples package. The harness
+also accepts an injected transport for the live path, which has been tested with
+a fake upstream; no actual vLLM request has been made in M8.
+
+Replay ToolRecorder still never executes its supplied callback. Verification
+separately reconstructs the five virtual environments from the original successful
+source tool actions that were actually consumed, in their consumption order.
+Recorded natural failures have no state effect because these environment operations
+validate before mutation. A post-execution injected error preserves its original
+side effect. If a regression omits prerequisites, reconstruction records the failed
+actions and verification fails. This simulation is specific to these deterministic
+virtual environments; it is not a way to rerun arbitrary external side effects.
+The harness emits a run-level `task_failure` only when verification fails. A task
+can succeed through its final state even if the agent later surfaces a tool/HTTP
+error; outcome and task_success deliberately describe different things.
+
+`stats.py` owns all calculations, using only Python's standard library:
+
+- Task success, tool-call validity (emitted calls), loop/timeout rates, and mean steps.
+- Clean replay false-positive rates per detector and overall; eligibility requires
+  a successful source with no findings. Both repeats count in the displayed n.
+- Determinism per source, comparing the two repeats' outcomes, task success,
+  normalized finding sets, and verified results. IDs/timestamps are excluded.
+- Injected-fault precision/recall with Wilson 95% intervals and actual TP/FP/FN
+  counts. Unique kind/target/sequence claims match one-to-one; an exchange sequence
+  never substitutes for a tool sequence. Cascaded findings without labels are FP.
+- Manual-label presence scores are separate from injection scores; conflicting
+  reviewers require adjudication. Sequence annotations are informational here.
+- F1 point estimates with support n; conservative confidence bounds combine
+  Bonferroni-adjusted 97.5% Wilson precision/recall intervals through the harmonic
+  mean. F1 is not falsely treated as an independent binomial proportion.
+- Paired v2-minus-v1 success difference with 10,000 seeded bootstrap resamples,
+  plus two-sided exact McNemar on discordant task/trial pairs.
+
+Rates carry numerator, n, and interval. Undefined denominators stay `value: null,
+n: 0` in JSON and `undefined` in Markdown. Rendering refuses numeric rates without
+n. Repeated trials/replays are correlated; displayed sample sizes do not imply
+independent-task generalization. No significance claim is made about scripted data.
+A run-level task_failure cannot localize a bad-result injection's original sequence;
+those fault labels are explicitly counted as unscored for detector P/R, rather than
+being credited using hidden fault metadata. They still affect task-success metrics.
+
+For the owner's later 100 natural-run labels:
+
+```bash
+agentreplay label --db DB --run-id ID --labeler owner
+```
+
+This shows observed exchanges/tools to stderr without detector findings, task
+success, or fault labels, then asks y/n for loop, invalid_tool_call, and timeout.
+It collects all answers before an atomic save and replaces that reviewer's prior
+judgments. Injected runs are rejected. Do not inspect detector output before
+labeling. M8 does not fabricate human labels or complete the pending 20-task review.
+
+M8 verification: **658 tests passed** (55 additional cases); Ruff, diff checks,
+and the installed-wheel CLI smoke passed. Coverage includes hand-computed statistics, 20×3×2 source executions with
+all replay phases, cold/idempotent reports, injected adaptive fault classes,
+explicit FP/non-determinism perturbations, reconstruction/side-effect checks,
+blind manual labeling, error rollback, cancellation, and installed-wheel CLI use.
+The existing TestClient warning remains. The early real-vLLM streaming fixture
+check is still outstanding; M9's live work and M10's CI/release checks remain.
+No rental GPU has been started. **M9 is the next milestone that needs a GPU**;
+prepare configuration and preservation scripts before paying for the rental.
