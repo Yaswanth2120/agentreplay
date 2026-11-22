@@ -31,7 +31,8 @@ agentreplay replay --trace-id <id> --mode strict --port 9000
 - [ ] Owner hand-solve review of 20 tasks
 - [x] Evaluation harness, statistics, and generated reports (M8: 20 tasks × 3 trials per version, offline)
 - [x] M9 live-run configuration, resumable runner, and verified backup tooling (offline tests only)
-- [ ] Full live evaluation (200 tasks × 3 trials per version), owner review, 100 manual labels, and off-GPU preservation
+- [x] Live recording: 200 tasks × 3 trials per version; replay/fault checks and verified off-GPU archive
+- [ ] Owner task review and 100 blind natural-run labels
 - [x] In-process Python tool capture/replay, decorator API, and minimal HTTPX agent (M2 offline tests)
 - [x] Run lifecycle, validated trace export/import, inspection CLI, and two offline golden traces (M3)
 - [x] Per-run replay, structured divergences, control endpoints, run diff, and offline golden-check CLI (M4)
@@ -656,11 +657,10 @@ explicit FP/non-determinism perturbations, reconstruction/side-effect checks,
 blind manual labeling, error rollback, cancellation, and installed-wheel CLI use.
 The existing TestClient warning remains. The early real-vLLM streaming fixture
 check is still outstanding; M9's live work and M10's CI/release checks remain.
-No rental GPU has been started. **M9 is the next milestone that needs a GPU**;
-prepare configuration and preservation scripts before paying for the rental.
+M8 used no rental GPU. The M9 section below records the subsequent live stage.
 
 
-## M9: live preparation (hardware work pending)
+## M9: live execution (owner review pending)
 
 The [live runbook](docs/LIVE_RUN.md) covers setup, exact serving flags, resume,
 streaming smoke capture, manual labeling, and verified copies off the rented GPU.
@@ -683,12 +683,30 @@ blind stratified samples, and server/stream preflights with fake transports.
 No dependencies or DB schema version changed. The existing TestClient warning
 remains, and the four pre-existing duplicate files stay untouched.
 
-**M9 is not complete:** no actual GPU/server has been accessed, no real streaming
-fixture or live 200×3 measurements have been captured, the owner's review and
-100 labels remain pending, and no archive has yet been copied off a rented machine.
-The next external requirement is a CUDA-capable Linux GPU host and its SSH command.
-Recommended headroom target: one 48 GB VRAM GPU; see the runbook for the estimate
-and official sources. No paid resources have been started.
+The automated live stage has now run on the owner-provided A100-SXM4 80 GB using
+`examples/eval-vast-a100.yaml` (vLLM 0.32.0). Both versions have 600 measured source
+runs, followed by 2,400 repeat replays, 600 regression replays, and 5,532 fault
+replays. The actual streamed tool capture is committed under `tests/fixtures/vllm/`
+and passes an offline byte-for-byte replay test without tool execution.
+
+The generated [live report](reports/summary.md) and JSON retain n for every rate.
+These are preliminary programmatic results: the owner's 20-task review and
+100 blind labels remain pending. The report explains repeat determinism, conditional
+clean-source FP eligibility, loop sequence-localization penalties, and unscored
+bad-result faults; no validated benchmark/significance claim is made.
+
+The complete SQLite snapshot and 1,201 golden trace exports are verified locally
+at `results/offbox/final-01/`; the immutable archive is `results/final-01.tar.gz`.
+Checksums and the blind 100-run sample are published in `reports/live/`. Data files
+stay outside Git because the DB is ~341 MiB; the archive is preserved off the rental.
+The instance is left running at the owner's explicit request, with project model
+and evaluation processes stopped. No instance was destroyed.
+
+Validation after the live stage: 676 tests pass, Ruff and shell checks pass.
+Supervisor termination exposed a process-lifecycle issue, now fixed with signal
+handling and an isolated server session; an actual CPU child-process test verifies
+that shutdown also terminates descendants. No model/agent behavior or metric
+arithmetic was changed in response to the live measurements.
 
 Existing issue found in M9 review: natural tool-error text gains a
 `ToolReplayedError` wrapper on replay, so an unchanged agent can diverge after that

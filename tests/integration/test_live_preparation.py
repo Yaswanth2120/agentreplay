@@ -467,7 +467,13 @@ def test_server_process_exit_updates_receipt(
             return 0
 
     monkeypatch.setattr(live, "collect_environment", lambda config: {"fixture": True})
-    monkeypatch.setattr(live.subprocess, "Popen", lambda command: Process())
+
+    def start(command: list[str], *, start_new_session: bool) -> Process:
+        assert start_new_session is True
+        return Process()
+
+    monkeypatch.setattr(live.subprocess, "Popen", start)
+    monkeypatch.setattr(live.os, "killpg", lambda pid, sig: None)
     receipt = tmp_path / "server.json"
     assert live.serve(load_config("eval.yaml"), receipt) == 0
     assert json.loads(receipt.read_text())["status"] == "exited"
@@ -660,3 +666,120 @@ def test_all_live_fault_variants_execute_offline_without_rerecording_sources(
     ]:
         assert report["metrics"]["injected"]["per_kind"][kind]["tp"] > 0
     assert report["metrics"]["injected"]["unscored_faults"] == 3
+
+
+def test_supervisor_signal_cleans_server_session_and_restores_handlers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import signal
+
+    previous = {sig: signal.getsignal(sig) for sig in [signal.SIGTERM, signal.SIGHUP]}
+    groups = []
+
+    class Process:
+        pid = 123
+        returncode = None
+
+        def wait(self, **kwargs: Any) -> int:
+            if self.returncode is None:
+                handler = signal.getsignal(signal.SIGTERM)
+                assert callable(handler)
+                handler(signal.SIGTERM, None)
+            return self.returncode
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.returncode = -15
+
+    def start(command: list[str], *, start_new_session: bool) -> Process:
+        assert start_new_session
+        return Process()
+
+    monkeypatch.setattr(live, "collect_environment", lambda config: {"fixture": True})
+    monkeypatch.setattr(live.subprocess, "Popen", start)
+    monkeypatch.setattr(live.os, "killpg", lambda pid, sig: groups.append((pid, sig)))
+    receipt = tmp_path / "server.json"
+    with pytest.raises(SystemExit) as stopped:
+        live.serve(load_config("eval.yaml"), receipt)
+    assert stopped.value.code == 128 + signal.SIGTERM
+    assert json.loads(receipt.read_text())["status"] == "exited"
+    assert groups == [(123, signal.SIGTERM)]
+    assert all(signal.getsignal(sig) == handler for sig, handler in previous.items())
+
+
+def test_shutdown_terminates_real_child_process_group_without_gpu(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    ready, stopped = tmp_path / "ready", tmp_path / "stopped"
+    child = """
+import signal
+import sys
+import time
+from pathlib import Path
+
+def finish(signum, frame):
+    Path(sys.argv[2]).write_text("stopped")
+    raise SystemExit(0)
+
+signal.signal(signal.SIGTERM, finish)
+Path(sys.argv[1]).write_text("ready")
+time.sleep(30)
+"""
+    parent = """
+import subprocess
+import sys
+import time
+subprocess.Popen([sys.executable, "-c", sys.argv[1], sys.argv[2], sys.argv[3]])
+time.sleep(30)
+"""
+    command = [sys.executable, "-c", parent, child, str(ready), str(stopped)]
+    actual_popen = subprocess.Popen
+
+    class Process:
+        def __init__(self) -> None:
+            self.child = actual_popen(command, start_new_session=True)
+            self.pid = self.child.pid
+            self.first_wait = True
+
+        @property
+        def returncode(self) -> int | None:
+            return self.child.returncode
+
+        def poll(self) -> int | None:
+            return self.child.poll()
+
+        def terminate(self) -> None:
+            self.child.terminate()
+
+        def wait(self, timeout: float | None = None) -> int:
+            if self.first_wait:
+                self.first_wait = False
+                deadline = time.monotonic() + 5
+                while not ready.exists() and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                assert ready.exists()
+                handler = signal.getsignal(signal.SIGTERM)
+                assert callable(handler)
+                handler(signal.SIGTERM, None)
+            return self.child.wait(timeout=timeout)
+
+    def start(command: list[str], *, start_new_session: bool) -> Process:
+        assert start_new_session
+        return Process()
+
+    monkeypatch.setattr(live, "server_command", lambda config: command)
+    monkeypatch.setattr(live, "collect_environment", lambda config: {"fixture": True})
+    monkeypatch.setattr(live.subprocess, "Popen", start)
+    with pytest.raises(SystemExit):
+        live.serve(load_config("eval.yaml"), tmp_path / "server.json")
+    deadline = time.monotonic() + 5
+    while not stopped.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert stopped.read_text() == "stopped"

@@ -2379,3 +2379,36 @@ Reports that the fake server child is already stopped. The test ensures normal e
 ### `scripts/run_live.sh`
 
 Resolves the repository root and executes the owner-selected Python interpreter with the live CLI. Strict shell errors and an explicit source path keep invocation consistent without provisioning paid resources.
+
+### `tests/integration/test_real_vllm_fixture.py` — `test_actual_vllm_stream_and_tool_result_replay_without_execution`
+
+Imports an actual Qwen3/vLLM stream capture and checks its reassembled tool call and recorded result. It then requires byte-identical SSE replay and forbids executing the tool callback, with zero finish findings.
+
+
+### `src/agentreplay/evals/live.py` — `stop_server_wrapper`
+
+Turns TERM/HUP into a controlled exit so the server wrapper enters its cleanup block. This lets supervisor shutdown stop the isolated child session instead of leaving GPU workers behind.
+
+### `tests/integration/test_live_preparation.py` — `test_supervisor_signal_cleans_server_session_and_restores_handlers`
+
+Invokes the registered stop handler during a fake server wait and requires child/session cleanup plus an exited receipt. It also checks that the caller's prior signal handlers are restored.
+
+### `tests/integration/test_live_preparation.py` — `test_shutdown_terminates_real_child_process_group_without_gpu`
+
+Launches an actual CPU parent/child process tree and stops it through the server wrapper. A child-written termination marker proves descendant cleanup without starting a model or using the network.
+
+### Shutdown-test `start` helpers
+
+Construct fake or real wrapped processes only when the server requests an isolated session. The explicit assertion makes the changed process-launch contract testable rather than silently accepting arbitrary kwargs.
+
+### Shutdown-test process methods: `__init__`, `returncode`, `poll`, `terminate`, and `wait`
+
+`__init__` starts the CPU fixture in its own session and remembers its identity. This models the process boundary used by the GPU server.
+
+`returncode` exposes the actual child's completion status. Delegating it keeps the receipt assertion tied to the real process.
+
+`poll` asks whether the fixture is still alive. It lets the wrapper decide whether termination is necessary.
+
+`terminate` sends the normal stop signal to the fixture parent. Descendant cleanup remains the wrapper's separate responsibility.
+
+`wait` first checks that the descendant is ready and triggers the installed stop handler, then delegates later waits. This exercises cleanup deterministically without sending a signal to the test runner itself.

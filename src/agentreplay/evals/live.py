@@ -11,12 +11,14 @@ import os
 import platform
 import random
 import re
+import signal
 import sqlite3
 import subprocess
 import sys
 import uuid
 from pathlib import Path
-from typing import Any
+from types import FrameType
+from typing import Any, NoReturn
 from urllib.parse import urlparse
 
 import httpx
@@ -147,6 +149,10 @@ def write_json(path: Path, value: Any) -> None:
     temporary.replace(path)
 
 
+def stop_server_wrapper(signum: int, frame: FrameType | None) -> NoReturn:
+    raise SystemExit(128 + signum)
+
+
 def serve(config: EvaluationConfig, receipt_path: Path) -> int:
     command = server_command(config)
     if receipt_path.exists():
@@ -159,28 +165,43 @@ def serve(config: EvaluationConfig, receipt_path: Path) -> int:
             else:
                 raise ValueError("a server from this receipt is already running")
     environment = collect_environment(config)
-    process = subprocess.Popen(command)
-    receipt = {
-        "pid": process.pid,
-        "command": command,
-        "environment": environment,
-        "status": "running",
+    previous_handlers = {
+        sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGHUP)
     }
+    process = None
+    receipt = None
+    for sig in previous_handlers:
+        signal.signal(sig, stop_server_wrapper)
     try:
+        process = subprocess.Popen(command, start_new_session=True)
+        receipt = {
+            "pid": process.pid,
+            "command": command,
+            "environment": environment,
+            "status": "running",
+        }
         write_json(receipt_path, receipt)
         return process.wait()
     finally:
-        if process.poll() is None:
-            process.terminate()
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
+        if process is not None:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
             try:
-                process.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-        write_json(
-            receipt_path,
-            {**receipt, "status": "exited", "returncode": process.returncode},
-        )
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            if receipt is not None:
+                write_json(
+                    receipt_path,
+                    {**receipt, "status": "exited", "returncode": process.returncode},
+                )
 
 
 def validate_receipt(config: EvaluationConfig, path: Path) -> dict[str, Any]:

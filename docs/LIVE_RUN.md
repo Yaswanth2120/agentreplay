@@ -1,8 +1,8 @@
 # M9 live evaluation runbook
 
-Status: tooling tested offline; **no GPU has been rented or real vLLM request run**.
-M9 is not complete until real measurements, owner labeling/review, and off-machine
-preservation are done. M10 CI/release work is separate.
+Status: the automated live stage and off-machine preservation have completed on
+the owner-provided A100 host. The generated report is `reports/summary.md`;
+owner labeling and the task review remain pending. M10 CI/release work is separate.
 
 ## Machine and pinned software
 
@@ -238,3 +238,19 @@ template's unrelated default model service before starting the project server;
 use supervisor for both long-running model and evaluation processes. The workspace
 on this host is not a persistent volume, so an off-machine verified backup remains
 required. This is an explicit pre-cohort deployment configuration change.
+
+
+## Recorded execution and shutdown follow-up
+
+The executed code/config commit is `92874a4`. The complete cohort contains 1,200
+sources and 8,532 replay/fault runs. Its archive and per-file hashes were checked
+on the local machine before handoff; `reports/live/` contains the generated proof
+files and blind sample. Raw DB/goldens are retained in local `results/offbox/final-01/`.
+The owner explicitly chose to keep Vast instance 62022545 running. Project services
+were stopped and their confirmed orphaned engine was removed; management services
+and the original template configuration were preserved.
+
+The supervisor wrapper now starts the server in its own session and handles TERM/
+HUP through its cleanup path, including descendant-group termination. This change
+addresses the lifecycle issue observed on the host; it does not change recorded
+agent behavior or measured results. Tests include a real CPU subprocess tree.

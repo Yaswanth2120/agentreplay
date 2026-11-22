@@ -224,6 +224,9 @@ def build_report(store: TraceStore, evaluation_id: str | None = None) -> dict[st
             "Clean FP denominators include both repeats of successful, finding-free source runs. Determinism compares each source's two repeats.",
             "Task failure is run-level; bad-result faults without localized verification are counted as unscored, never invented detector true positives.",
             "Manual presence-label scores remain separate from injected sequence-label scores; missing denominators are shown as undefined.",
+            "Natural tool failures currently gain a ToolReplayedError wrapper on replay, potentially causing unchanged-agent strict misses. Repeat determinism does not establish equivalence with the source recording.",
+            "Clean FP rates are conditional on successful finding-free source runs, not estimates over all natural runs; independent human labels remain pending.",
+            "Loop P/R includes exact target-sequence localization: an observed loop at a later exchange can count as FP/FN against its causal tool-event label even when loop presence was detected.",
         ],
     }
 

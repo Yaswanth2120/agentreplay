@@ -604,3 +604,41 @@ template's unrelated GPT-OSS service and use the installed vLLM environment rath
 than replacing its CUDA/PyTorch stack. The version/port override is explicit in
 examples/eval-vast-a100.yaml before starting a cohort; the generic 0.34.0 plan stays
 available. Model and evaluation processes use supervisor as the host guide requires.
+
+
+### Automated live stage and preserved evidence
+
+Completed both 600-run source versions on the supplied A100 with code/config
+92874a4 and vLLM 0.32.0. The runner then completed 2,400 repeats, 600 regression
+replays, and 5,532 fault replays. Preserve all verified successes and failures;
+search examples that invented codes without tools remain genuine task failures.
+Do not retune the agent/detectors after inspecting these measurements.
+
+Copied the final consistent archive off the GPU and matched its SHA256 and all
+1,209 manifested files. It includes the ~341 MiB DB and 1,201 original golden
+exports. Keep large raw data in ignored local results/; publish generated reports,
+checksums, the blind 100-run sample, and a real SSE regression fixture in Git.
+The original archive remains immutable. Owner review and labels are not fabricated.
+
+Report notes explicitly distinguish repeat-to-repeat determinism from source
+faithfulness, conditional finding-free-source FP rates from all-natural-run FP,
+and loop target localization from loop presence. Mislocalized loop claims retain
+both FP/FN penalties. Bad-result faults without localization remain unscored.
+
+Observed a supervisor shutdown problem: TERM/HUP could kill the wrapper while a
+vLLM engine survived. Fix only that M9 process lifecycle using an isolated session,
+cleanup signal handlers, and descendant-group termination; verify it with both
+signal-path and actual CPU subprocess tests. The existing fake-process test now
+asserts the intended new-session launch argument; no test was weakened. This fix
+and interpretation notes do not alter model behavior, detector rules, or metric
+arithmetic used for the completed cohort.
+
+Owner explicitly requested that the instance remain running. Leave it running;
+stop only completed project processes and preserve management services. Never
+stop/destroy the instance after that preference without a later owner instruction.
+
+Final local verification: 676 tests passed, including actual captured SSE replay,
+TERM/HUP cleanup, and a real CPU descendant-process shutdown test. Ruff and diff
+checks passed. The actual full archive hash and manifest were verified before
+preparing published reports; the original snapshot remains immutable and a working
+DB copy is used for report generation and future human labels.
