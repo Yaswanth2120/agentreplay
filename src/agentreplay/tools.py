@@ -110,7 +110,7 @@ class ToolRecorder:
         if self.mode == "replay":
             event = self.session.next_tool(name, saved_args)
             if event.error is not None:
-                self.session.faults.observed_tools.append(event.model_copy(deep=True))
+                self.session.faults.observe_tool(event)
                 raise ToolReplayedError(event.error)
             result = event.result
         else:
@@ -136,7 +136,7 @@ class ToolRecorder:
                 event.latency_ms = (self.clock() - started) * 1000
                 self.store.add_tool_event(event)
                 if error is not None and isinstance(self.faults, FaultRuntime):
-                    self.faults.observed_tools.append(event.model_copy(deep=True))
+                    self.faults.observe_tool(event)
         if isinstance(self.faults, FaultRuntime):
             return self._apply_faults(event, result)
         return self.faults(event, result) if self.faults is not None else result
@@ -154,7 +154,7 @@ class ToolRecorder:
             if error is not None:
                 observed.result = None
                 observed.error = f"{type(error).__name__}: {error}"
-            self.faults.observed_tools.append(observed)
+            self.faults.observe_tool(observed)
             if self.mode == "record":
                 self.store.update_tool_event(observed)
 

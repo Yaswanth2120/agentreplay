@@ -23,10 +23,11 @@ agentreplay replay --trace-id <id> --mode strict --port 9000
 ```
 
 ## Status
-- [x] Pydantic trace schema (v5), SQLite store, strict/lenient replayer, record/replay proxy, CLI, tests
+- [x] Pydantic trace schema (v6), SQLite store, strict/lenient replayer, record/replay proxy, CLI, tests
 - [x] Streaming capture/replay, interleaved tool-call reassembly, partial-error capture, and stream/non-stream mismatch warnings (M1 offline tests)
 - [x] Versioned seeded fault plans, all 11 fault classes, persisted labels, and fixed-trajectory fault exercise (M5)
-- [ ] Failure detector + labeled eval set (200 tasks x 3 trials)
+- [x] Pure failure detectors, durable observed run views, and detection CLI (M6 offline tests)
+- [ ] Labeled eval set and measured detector precision/recall (200 tasks x 3 trials)
 - [x] In-process Python tool capture/replay, decorator API, and minimal HTTPX agent (M2 offline tests)
 - [x] Run lifecycle, validated trace export/import, inspection CLI, and two offline golden traces (M3)
 - [x] Per-run replay, structured divergences, control endpoints, run diff, and offline golden-check CLI (M4)
@@ -65,7 +66,7 @@ available as `app.state.run_id`, and warnings can be read through
 `TraceStore.findings(run_id)`. Run completion is available through `RunRecorder`, and `show` includes persisted
 runs and findings. Per-request run routing is available through `X-AgentReplay-Run` (see M4 below).
 
-The current schema v5 records a database-level version in `schema_meta`. Older/unversioned
+The current schema v6 records a database-level version in `schema_meta`. Older/unversioned
 or newer databases raise `SchemaVersionError` when opened; use a new database
 path. There is no migration in this pre-release milestone.
 
@@ -279,8 +280,7 @@ The proxy supports:
 - `POST /_agentreplay/runs/{run_id}/finish` accepts, for example,
   `{"outcome":"completed","task_success":true}` and returns the finished run
   and findings. It rejects repeat finishes and requests still in flight. Streaming
-  requests stay active until completion or disconnect cleanup. Finish currently
-  performs replay checks; the other failure detectors remain M6 work.
+  requests stay active until completion or disconnect cleanup. Finish performs replay checks and M6 failure detection atomically.
 
 For tools in the same process, obtain `session = app.state.runs.session(run_id)`
 and pass `session=session` to `ToolRecorder(store, trace_id, "replay", ...)`.
@@ -338,9 +338,9 @@ the stored requests and tool calls by sequence, placing exchanges before tools o
 tied sequence numbers. It does not execute an adaptive agent, feed mutated results
 into later request construction, score task success, or compute detector metrics.
 Those capabilities belong to later milestones. Source trace rows remain unchanged;
-fault labels and the new replay run are persisted separately. Replay observations
-are retained in memory and emitted in the command's JSON, not saved as a second
-trace. Durable observed RunViews for detector evaluation remain M6 integration work.
+fault labels and the new replay run are persisted separately. Replay observations are emitted in the command's JSON and saved at finish in
+`run_observations`, separately from the immutable source trace. M6 detection findings
+are included in the JSON; the command still makes no scoring claims.
 
 Plans contain `version: 1`, an integer `seed`, and a list of faults. Each fault has
 `class`, `target`, exactly one selector, and optional class-specific `params`:
@@ -421,3 +421,60 @@ and Ruff passes. Every class has a mutated-output test, both tool modes are cove
 and seeded fault-row reproducibility, source immutability, delayed-label ordering,
 plan hashes, CLI wiring, and failure cleanup are tested. The existing TestClient
 deprecation warning remains. No GPU or live LLM was used.
+
+
+## M6: offline failure detection
+
+M5 is complete; its fixed-trajectory evaluator intentionally remains unscored.
+M6 adds pure detectors taking only a sanitized `RunView`, with no store, fault
+plan, injected labels, network, clock, or random identifier access. `DetectorRun`
+contains only run ID, trace ID, kind, and outcome. Finding IDs and timestamps are
+stable when detection is repeated on a finished run.
+
+```bash
+agentreplay detect --db traces.db --run-id <finished-run-id>
+```
+
+This prints JSON and replaces only detector-owned findings, preserving replay
+findings. Unknown/unfinished runs and invalid configuration exit 2. A replay run
+must have an observed snapshot; detection never substitutes the unconsumed source
+trace. Record/live runs without a snapshot can use their captured trace rows.
+RunRecorder, ReplaySession, and proxy control finishes automatically detect and
+atomically commit run completion, observations, and findings.
+
+| Kind | Rule / default |
+|---|---|
+| `invalid_tool_call` | Undeclared function, invalid JSON object arguments, or declared JSON Schema violation |
+| `loop` | 3 consecutive identical name/argument signatures, or a cycle of length 2–4 repeated 3 times within 24 calls |
+| `timeout` | HTTP 504/599 or exchange/tool latency strictly above 60000 ms |
+| `malformed_response` | Missing/unparseable response, absent/empty choices, or null content without tool calls |
+| `llm_error` | HTTP status >=400 unless classified as timeout |
+| `tool_error` | Tool error is present, including an empty error string |
+| `budget_exceeded` | More than 25 exchange attempts; warning severity |
+
+Other detector findings have error severity. HTTP error envelopes are classified
+by status instead of also being called malformed. Empty text is valid. Loop
+analysis prefers emitted calls and annotates matching executed tools without
+counting them twice; it falls back to executed events when no calls were emitted.
+Replay budget counts misses as attempts. A tool TimeoutError is a tool error;
+timeout additionally requires measured latency above the configured threshold.
+
+Pass thresholds as `config={"detectors": {"timeout_ms": 60000,
+"tool_timeout_ms": 60000, "max_steps": 25, "loop_repeats": 3,
+"max_cycle_length": 4, "loop_window": 24}}`. Omitted/null tool timeout inherits
+the exchange timeout. Invalid fields and thresholds are rejected before creating
+runs. JSON Schema validation supports local references and rejects external ones.
+Task failure and undetectable bad tool results require independent task verifiers
+in later milestones; injection labels are never used to manufacture findings.
+
+Schema v6 adds `run_observations`; older databases are rejected without migration.
+Golden files were regenerated with the committed script (only version headers
+changed). All 310 tests pass offline, including 91 additional cases beyond the
+schema-version compatibility case, restart detection, atomic rollback, repeat CLI
+runs, every detector's boundaries, and both clean goldens. Ruff passes. The M5
+HTTP-error test now intentionally expects the automatically produced `llm_error`.
+Four pre-existing untracked duplicate files are left untouched and excluded by
+exact paths from pytest/Ruff. The existing TestClient deprecation warning and
+editable-install environment issue remain; CI and real vLLM chunk validation are
+still pending. No GPU was used. M7/M8 can proceed offline; rental is planned for
+M9 live evaluation, with notice before any earlier live validation needs it.

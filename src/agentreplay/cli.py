@@ -7,6 +7,7 @@ import sqlite3
 import uvicorn
 
 from .checks import check_golden
+from .detection import detect_run
 from .evals.faults import evaluate_faults
 from .exportio import export_trace, import_trace
 from .faults import FaultPlan
@@ -48,6 +49,9 @@ def main(argv: list[str] | None = None) -> None:
     command.add_argument("--golden", required=True)
     command.add_argument("--agent", required=True)
     command.add_argument("--mode", choices=["strict", "lenient"], default="strict")
+    command = sub.add_parser("detect")
+    command.add_argument("--db", default="traces.db")
+    command.add_argument("--run-id", required=True)
     evaluation = sub.add_parser("eval")
     evaluation_sub = evaluation.add_subparsers(dest="eval_cmd", required=True)
     command = evaluation_sub.add_parser("faults")
@@ -64,7 +68,19 @@ def main(argv: list[str] | None = None) -> None:
                 raise SystemExit(1)
             return
         store = TraceStore(args.db)
-        if args.cmd == "eval":
+        if args.cmd == "detect":
+            print(
+                json.dumps(
+                    [
+                        finding.model_dump()
+                        for finding in detect_run(store, args.run_id)
+                    ],
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    indent=2,
+                )
+            )
+        elif args.cmd == "eval":
             result = evaluate_faults(store, FaultPlan.load(args.plan), args.trace_id)
             print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
         elif args.cmd == "list":

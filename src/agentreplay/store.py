@@ -14,6 +14,7 @@ from .schema import (
     Fault,
     Finding,
     Run,
+    RunObservations,
     RunOutcome,
     ToolEvent,
     Trace,
@@ -59,6 +60,10 @@ CREATE TABLE IF NOT EXISTS runs (
     task_success INTEGER, detail TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_runs_task ON runs (task_id, agent_version, model);
+CREATE TABLE IF NOT EXISTS run_observations (
+    run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+    data TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS faults (
     id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -257,6 +262,7 @@ class TraceStore:
         task_success: bool | None = None,
         detail: str | None = None,
         findings: list[Finding] | None = None,
+        observations: RunObservations | None = None,
     ) -> Run:
         with self._lock, self.conn:
             cursor = self.conn.execute(
@@ -266,6 +272,11 @@ class TraceStore:
             )
             if cursor.rowcount != 1:
                 raise ValueError(f"run {run_id!r} is unknown or already finished")
+            if observations is not None:
+                self.conn.execute(
+                    "INSERT INTO run_observations VALUES (?,?)",
+                    (run_id, canonical_json(observations.model_dump())),
+                )
             for finding in findings or []:
                 if finding.run_id != run_id:
                     raise ValueError(
@@ -410,3 +421,40 @@ class TraceStore:
             )
             if cursor.rowcount != 1:
                 raise ValueError("unknown tool event")
+
+    def get_observations(self, run_id: str) -> RunObservations | None:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT data FROM run_observations WHERE run_id=?", (run_id,)
+            ).fetchone()
+        return (
+            RunObservations.model_validate(json.loads(row[0]))
+            if row is not None
+            else None
+        )
+
+    def replace_detector_findings(
+        self, run_id: str, findings: list[Finding], kinds: tuple[str, ...]
+    ) -> None:
+        with self._lock, self.conn:
+            if (
+                self.conn.execute(
+                    "SELECT id FROM runs WHERE id=?", (run_id,)
+                ).fetchone()
+                is None
+            ):
+                raise ValueError(f"unknown run {run_id!r}")
+            if any(
+                finding.run_id != run_id or finding.kind not in kinds
+                for finding in findings
+            ):
+                raise ValueError(
+                    "detector findings must match the run and allowed kinds"
+                )
+            slots = ",".join("?" for _ in kinds)
+            self.conn.execute(
+                f"DELETE FROM findings WHERE run_id=? AND kind IN ({slots})",
+                (run_id, *kinds),
+            )
+            for finding in findings:
+                self._insert_finding(finding)

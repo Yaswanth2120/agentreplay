@@ -6,11 +6,11 @@ import time
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .canonical import LENIENT_KEYS, STRICT_KEYS, canonical_hash
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 EXPORT_FORMAT = "agentreplay.trace.v1"
 
 
@@ -174,3 +174,51 @@ class Fault(BaseModel):
     target_seq: int
     params: dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
+
+
+class DetectorConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+    timeout_ms: float = Field(default=60000.0, ge=0)
+    tool_timeout_ms: float | None = Field(default=None, ge=0)
+    max_steps: int = Field(default=25, ge=0)
+    loop_repeats: int = Field(default=3, ge=2)
+    max_cycle_length: int = Field(default=4, ge=1, le=4)
+    loop_window: int = Field(default=24, ge=1)
+
+    @model_validator(mode="after")
+    def validate_window(self) -> DetectorConfig:
+        if self.loop_window < self.loop_repeats:
+            raise ValueError("loop_window must fit at least loop_repeats calls")
+        return self
+
+
+class DetectorRun(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    trace_id: str
+    kind: Literal["record", "live", "replay"]
+    outcome: RunOutcome | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def from_run(cls, value: Any) -> Any:
+        if isinstance(value, Run):
+            return value.model_dump(include=set(cls.model_fields))
+        return value
+
+
+class RunObservations(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    exchanges: list[Exchange] = Field(default_factory=list)
+    tool_events: list[ToolEvent] = Field(default_factory=list)
+    exchange_attempts: int | None = Field(default=None, ge=0)
+
+
+class RunView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    run: DetectorRun
+    exchanges: list[Exchange] = Field(default_factory=list)
+    tool_events: list[ToolEvent] = Field(default_factory=list)
+    exchange_attempts: int | None = Field(default=None, ge=0)
+    config: DetectorConfig = Field(default_factory=DetectorConfig)
+    evaluated_at: float = 0.0

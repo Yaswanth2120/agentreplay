@@ -4,6 +4,13 @@ import pytest
 
 from agentreplay.store import TraceStore
 
+# Pre-existing untracked copies are preserved locally, not part of the test suite.
+collect_ignore = [
+    "test_checks 2.py",
+    "test_replay_m4 2.py",
+    "integration/test_run_routing 2.py",
+]
+
 
 @pytest.fixture
 def store():

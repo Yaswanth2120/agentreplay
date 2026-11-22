@@ -389,3 +389,37 @@
   warning and previously flagged health/model endpoints, non-object upstream JSON,
   upstream auth, real vLLM fixtures, cross-process consumption, and Python-version
   CI gaps remain outside M5.
+
+
+## M6 — 2026-11-22
+
+- Persist observed exchanges, executed tools, and replay attempt counts in an
+  additive schema-v6 `run_observations` table. This makes cold detection possible
+  without consulting injection labels or mutating the original trace. Finalization
+  commits run status, snapshots, replay findings, and detector findings together.
+- Separate the I/O adapter (`detection.py`) from pure `detectors.py`. Sanitize run
+  metadata to four fields; pass only detector thresholds from config. Derive IDs
+  from evidence and timestamps from the persisted finish time for repeatability.
+- Persisted detection requires a finished run. Replay without a snapshot fails
+  clearly; only record/live runs may fall back to their captured trace rows.
+  Replace just the seven owned detector kinds, retaining replay/task findings.
+- Prefer emitted calls for loops, annotate executed matches without double counting,
+  and use executed calls as fallback. Return the earliest qualifying loop, using
+  the triggering exchange and starting tool sequence for evidence. Count unmatched
+  replay attempts toward budget; do not mistake a missing replay for an LLM response.
+- Valid HTTP error envelopes are status errors, not malformed successes. Status
+  504/599 and over-threshold latency take timeout priority. Empty text is valid;
+  a present tool error counts even when empty, but its text does not imply latency.
+- Tool timeout inherits the exchange threshold unless overridden. Thresholds are
+  strict validated configuration; default equality is not a timeout or budget breach.
+  Repeated cycles must fit the configured window. Task failure awaits independent
+  verifiers; tool_bad_result cannot be inferred from a hidden injection schema.
+- Validate arguments offline using the already approved jsonschema dependency,
+  bounded to tested 4.26–4.x. Its private reference-resolution exception bridges
+  unresolved references without importing a new direct dependency or deprecated
+  public alias; local/unresolved/external reference behavior has regression tests.
+- Intentionally update the M5 HTTP429 assertion: automatic finish now produces
+  llm_error. Preserve its unscored report and source immutability assertions.
+- Ignore only the four pre-existing untracked identical duplicate paths in tooling;
+  leave those files untouched. Legitimate tracked tests remain collected.
+- No GPU is required for M6; M7/M8 remain offline. M9 owns GPU rental and live runs.

@@ -330,7 +330,13 @@ def test_fault_eval_cli_runs_fixed_trajectory_without_scoring_or_mutating_source
     run = reopened.get_run(result["run_id"])
     assert run.outcome == "completed" and run.fault_plan_id == plan.digest
     assert run.config["fault_evaluation"] == "fixed-recorded-trajectory"
-    assert reopened.findings(run.id) == []
+    # M6 finalization now detects the observed HTTP error independently of its fault row.
+    findings = reopened.findings(run.id)
+    assert [finding.kind for finding in findings] == ["llm_error"]
+    assert findings[0].exchange_seq == 0 and findings[0].evidence == {
+        "status_code": 429
+    }
+    assert [finding["kind"] for finding in result["findings"]] == ["llm_error"]
     reopened.close()
 
 

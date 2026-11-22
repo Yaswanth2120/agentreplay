@@ -13,7 +13,7 @@ dependencies = [
     "httpx>=0.27",
     "uvicorn>=0.29",
     "pyyaml>=6",
-    "jsonschema>=4",
+    "jsonschema>=4.26,<5",
 ]
 
 [project.optional-dependencies]
@@ -28,3 +28,11 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
+
+[tool.ruff]
+extend-exclude = [
+    "src/agentreplay/checks 2.py",
+    "tests/test_checks 2.py",
+    "tests/test_replay_m4 2.py",
+    "tests/integration/test_run_routing 2.py",
+]
