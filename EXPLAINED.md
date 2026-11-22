@@ -2412,3 +2412,7 @@ Construct fake or real wrapped processes only when the server requests an isolat
 `terminate` sends the normal stop signal to the fixture parent. Descendant cleanup remains the wrapper's separate responsibility.
 
 `wait` first checks that the descendant is ready and triggers the installed stop handler, then delegates later waits. This exercises cleanup deterministically without sending a signal to the test runner itself.
+
+## M10: CI and documentation
+
+No Python functions were added or changed. The CI workflow installs the package in clean Python 3.10–3.12 environments, runs Ruff and the existing offline test suite, checks the golden traces with the installed executable, and compares an exported trace to its original bytes. README and DESIGN document the verified usage, format freeze, and pending independent owner review; historical implementation notes moved to docs/MILESTONES.md.

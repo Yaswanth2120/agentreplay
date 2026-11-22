@@ -642,3 +642,13 @@ TERM/HUP cleanup, and a real CPU descendant-process shutdown test. Ruff and diff
 checks passed. The actual full archive hash and manifest were verified before
 preparing published reports; the original snapshot remains immutable and a working
 DB copy is used for report generation and future human labels.
+
+## M10: offline CI, documentation, and format freeze
+
+Use clean GitHub Actions checkouts on Python 3.10, 3.11, and 3.12, installing the actual package rather than relying only on PYTHONPATH. Run Ruff, all offline tests, the installed golden-check CLI, and an import/export byte comparison. Tests continue to block real socket connections; package installation can access PyPI.
+
+Replace the chronological README with an executable offline quickstart, architecture, verbatim generated report rows, explicit limitations, and current status. Preserve the former detailed API/milestone notes in docs/MILESTONES.md and identify them as historical. Do not edit generated metrics or the archived live dataset.
+
+Freeze existing SQLite schema 7 and agentreplay.trace.v1 without changing fixture/data bytes. No schema migration or new dependency is introduced. Future breaking changes require an explicit new version and compatibility policy.
+
+The owner review and blind labels are mandatory independent evidence, still pending. Withhold the v0.1.0 tag until that release review is complete rather than implying validated results. The GPU instance stays running per the owner's instruction; M10 does not use GPU inference. Preserve known reference-agent error wrapping and loop localization issues as limitations; changing them after seeing measurements requires a separate fix and independently identified follow-up results.

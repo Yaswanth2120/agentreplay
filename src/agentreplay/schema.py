@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .canonical import LENIENT_KEYS, STRICT_KEYS, canonical_hash
 
+# Frozen at M10; incompatible changes require explicit versioning (docs/DESIGN.md).
 SCHEMA_VERSION = 7
 EXPORT_FORMAT = "agentreplay.trace.v1"
 
