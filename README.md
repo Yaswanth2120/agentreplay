@@ -30,7 +30,8 @@ agentreplay replay --trace-id <id> --mode strict --port 9000
 - [x] Five deterministic environments, 200 frozen tasks, independent verifiers, reference agent v1/v2 (M7 automated checks)
 - [ ] Owner hand-solve review of 20 tasks
 - [x] Evaluation harness, statistics, and generated reports (M8: 20 tasks × 3 trials per version, offline)
-- [ ] Full live evaluation (200 tasks × 3 trials per version) and 100 manual natural-run labels
+- [x] M9 live-run configuration, resumable runner, and verified backup tooling (offline tests only)
+- [ ] Full live evaluation (200 tasks × 3 trials per version), owner review, 100 manual labels, and off-GPU preservation
 - [x] In-process Python tool capture/replay, decorator API, and minimal HTTPX agent (M2 offline tests)
 - [x] Run lifecycle, validated trace export/import, inspection CLI, and two offline golden traces (M3)
 - [x] Per-run replay, structured divergences, control endpoints, run diff, and offline golden-check CLI (M4)
@@ -657,3 +658,41 @@ The existing TestClient warning remains. The early real-vLLM streaming fixture
 check is still outstanding; M9's live work and M10's CI/release checks remain.
 No rental GPU has been started. **M9 is the next milestone that needs a GPU**;
 prepare configuration and preservation scripts before paying for the rental.
+
+
+## M9: live preparation (hardware work pending)
+
+The [live runbook](docs/LIVE_RUN.md) covers setup, exact serving flags, resume,
+streaming smoke capture, manual labeling, and verified copies off the rented GPU.
+`eval.yaml` pins Qwen3-8B model/tokenizer revisions and vLLM, sets bounded generation
+with thinking disabled, and defines all 12 independent fault variants. The GPU
+records v1 then v2 once; fault sweeps and repeat checks use those recordings offline.
+`make live-plan PYTHON=.venv/bin/python` is safe to inspect without a GPU.
+
+Resume keeps completed task/trial/version results, including verified failures,
+and retains abandoned attempts as history. `eval run --resume ID --replay-only`
+refuses missing source measurements and never makes model calls. State/config/code
+checks prevent silent cohort mixing. Backup uses SQLite's WAL-safe API and exports
+real goldens plus a checksummed archive; copying and verifying it off-machine is
+still an owner-driven step, not something a local backup command can claim.
+
+Preparation verification: **673 tests pass**, Ruff and shell syntax checks pass,
+and the non-GPU plan command passes. Tests simulate interruptions, changed
+provenance, multi-plan resume, preserved WAL backups, importable golden exports,
+blind stratified samples, and server/stream preflights with fake transports.
+No dependencies or DB schema version changed. The existing TestClient warning
+remains, and the four pre-existing duplicate files stay untouched.
+
+**M9 is not complete:** no actual GPU/server has been accessed, no real streaming
+fixture or live 200×3 measurements have been captured, the owner's review and
+100 labels remain pending, and no archive has yet been copied off a rented machine.
+The next external requirement is a CUDA-capable Linux GPU host and its SSH command.
+Recommended headroom target: one 48 GB VRAM GPU; see the runbook for the estimate
+and official sources. No paid resources have been started.
+
+Existing issue found in M9 review: natural tool-error text gains a
+`ToolReplayedError` wrapper on replay, so an unchanged agent can diverge after that
+error. It was reproduced offline on v2 `tickets-017` and is documented in the live
+runbook. Clean FP eligibility excludes those failed source runs; repeat determinism
+compares two replays and does not establish source-to-replay equivalence. The agent
+normalization fix remains outside this config/script milestone.

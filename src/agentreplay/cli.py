@@ -65,6 +65,12 @@ def main(argv: list[str] | None = None) -> None:
     command = evaluation_sub.add_parser("run")
     command.add_argument("--db", default="traces.db")
     command.add_argument("--config", required=True)
+    command.add_argument("--resume", help="Resume an existing evaluation ID")
+    command.add_argument(
+        "--replay-only",
+        action="store_true",
+        help="Resume only after every source pair is measured; never call a model",
+    )
     command = sub.add_parser("report")
     command.add_argument("--db", default="traces.db")
     command.add_argument("--out", default="reports")
@@ -111,7 +117,9 @@ def main(argv: list[str] | None = None) -> None:
             )
         elif args.cmd == "eval":
             result = (
-                run_evaluation(store, load_config(args.config))
+                run_evaluation(
+                    store, load_config(args.config), args.resume, args.replay_only
+                )
                 if args.eval_cmd == "run"
                 else evaluate_faults(store, FaultPlan.load(args.plan), args.trace_id)
             )

@@ -539,3 +539,59 @@ and its pending review template. Existing TestClient deprecation warning remains
 M8 verification: 658 tests passed, including 55 additional cases (one old-schema
 compatibility case). Ruff and diff checks passed; the clean wheel ran the packaged
 CLI through evaluation and mutable-state replay/reporting without an examples import.
+
+
+## M9 preparation — 2026-11-22 (live acceptance pending)
+
+- Work on feature/m9-live-runner, stacked on the open M8 branch; do not merge
+  earlier PRs implicitly. Only config/scripts and required resume/preservation
+  integration are in scope. M9 cannot be declared complete without real results
+  and an off-machine verified copy; no GPU/SSH endpoint is available yet.
+- Pin the public Qwen3-8B model/tokenizer SHA and vLLM 0.34.0 after checking the
+  official model metadata, Qwen serving guide, and vLLM release. Use Hermes as
+  specified, bounded output/context, and disable thinking via recorded request
+  kwargs. No vLLM/PyTorch dependency is added to the library or installed locally.
+- Support an explicit cohort ID for resume. Logical slots include phase, task,
+  version, trial, source, repeat, and fault-plan identity; a new attempt supersedes
+  an interrupted/unmeasured one without deleting history. Verified failures are
+  completed measurements and never retried to improve the success rate.
+- Resume prechecks code SHA, frozen task hash, normalized settings, model revision,
+  sampling, and serving version/flags. Runtime inventories may change on a new
+  host but are recorded and disclosed in reports. Prior unmeasured rows are marked
+  aborted; effective results select the highest unique attempt per logical slot.
+- Use a nonblocking canonical-DB file lock in the owner runner. Persist session ID
+  before evaluation starts and recognize moved DBs only when the same cohort exists.
+  The normal async API expects callers to avoid concurrent resume of one cohort.
+- Add replay-only resume with a full source-completeness precheck. It can finish
+  offline after copying the DB, without paying for a server or turning unrecorded
+  source tasks into network-error measurements.
+- Expand from one fault_plan to optional independent fault_plans (mutually exclusive
+  settings). Each receives separate CPU-only replay slots and report membership
+  checks; the committed live config covers 11 classes plus both tool-loop targets.
+  This avoids repeating paid source recordings just to evaluate another fault.
+- Capture server argv, process identity, package versions, Python/OS, GPU inventory,
+  driver, and PyTorch CUDA build. The same Python starts vLLM; a process receipt and
+  models check precede a streamed-tool smoke recording. Real CUDA/stream shapes
+  remain unverified until owner hardware is available.
+- Use SQLite backup() under the store lock instead of copying an active WAL DB.
+  Export goldens and reports from the snapshot, preserve smoke fixtures and frozen
+  inputs, and produce checksums plus an archive. Never overwrite outputs; explicitly
+  identify incomplete snapshots. Only the owner/SSH transfer can establish an
+  off-machine copy, so backup locally is not a completion claim.
+- Sample 100 natural live source runs with 20 per environment and a local fixed RNG,
+  without consulting findings or task success. Human labeling/review stay pending.
+- New fields live in existing JSON config and existing result/label tables, so DB
+  schema remains v7. Preserve pre-existing tests and duplicate files; TestClient's
+  known warning remains. No paid provisioning or external messages are authorized
+  or executed by this preparation work.
+
+Preparation checks: 673 tests passed, Ruff passed, shell syntax and non-GPU plan
+passed, and both committed goldens passed. No GPU/model packages were installed
+locally. Real live results and an off-machine archive are still pending hardware.
+
+Flag an existing behavior rather than changing agent semantics outside M9 scope:
+natural EnvironmentError messages acquire a ToolReplayedError wrapper during
+replay. A v2 tickets-017 experiment reproduced completed source / agent_error
+repeats with strict misses. Repeat-to-repeat determinism is not source equivalence;
+clean FP eligibility excludes originally failing sources. A separate normalization
+fix is needed before claiming faithful natural-error replay.

@@ -67,6 +67,8 @@ async def run_agent(
     max_steps: int = 25,
     recorder: ToolRecorder | None = None,
     run_id: str | None = None,
+    max_tokens: int | None = None,
+    chat_template_kwargs: dict[str, Any] | None = None,
 ) -> str:
     if version not in {"v1", "v2"} or max_steps < 1 or trial < 0:
         raise ValueError("invalid agent version, request budget, or trial")
@@ -85,6 +87,12 @@ async def run_agent(
                 "tools": environment.tools(),
                 "temperature": 0.7,
                 "seed": trial,
+                **({"max_tokens": max_tokens} if max_tokens is not None else {}),
+                **(
+                    {"chat_template_kwargs": chat_template_kwargs}
+                    if chat_template_kwargs
+                    else {}
+                ),
             },
             headers={"X-AgentReplay-Run": run_id} if run_id else {},
         )

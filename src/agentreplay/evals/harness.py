@@ -22,6 +22,7 @@ from ..store import TraceStore
 from ..tools import ToolRecorder
 from .agent import run_agent
 from .envs import EnvironmentError, make_environment
+from .resume import JobKey, index_runs
 from .scripted import scripted_response
 from .tasks import load_tasks, tasks_version
 from .verifiers import verify
@@ -148,6 +149,8 @@ async def run_task(
                     max_steps=config.max_steps,
                     recorder=recorder,
                     run_id=run_id,
+                    max_tokens=config.max_tokens,
+                    chat_template_kwargs=config.chat_template_kwargs,
                 )
             except (
                 ToolReplayMiss,
@@ -175,6 +178,8 @@ async def run_task(
             else [
                 Finding(
                     run_id=run_id,
+                    max_tokens=config.max_tokens,
+                    chat_template_kwargs=config.chat_template_kwargs,
                     kind="task_failure",
                     severity="error",
                     evidence={
@@ -217,6 +222,66 @@ async def run_task(
             )
 
 
+async def run_slot(
+    store: TraceStore,
+    task: Task,
+    trial: int,
+    version: str,
+    config: EvaluationConfig,
+    metadata: dict[str, Any],
+    *,
+    jobs: dict[JobKey, Run],
+    phase: str = "record",
+    source: Run | None = None,
+    repeat: int | None = None,
+    plan: FaultPlan | None = None,
+    transport: httpx.AsyncBaseTransport | None = None,
+    clock: Callable[[], float] = time.time,
+) -> Run:
+    key = (
+        phase,
+        task.id,
+        trial,
+        version,
+        source.id if source else None,
+        repeat,
+        plan.digest if phase == "fault_replay" and plan else None,
+    )
+    old = jobs.get(key)
+    if old is not None:
+        if (
+            old.finished_at is not None
+            and old.task_success is not None
+            and store.get_evaluation(old.id) is not None
+            and store.get_observations(old.id) is not None
+        ):
+            return old
+        if old.finished_at is None:
+            store.finish_run(
+                old.id,
+                "aborted",
+                finished_at=clock(),
+                detail="interrupted attempt superseded during explicit resume",
+            )
+    attempt = old.config.get("attempt", 0) + 1 if old else 0
+    run = await run_task(
+        store,
+        task,
+        trial,
+        version,
+        config,
+        {**metadata, "attempt": attempt},
+        phase=phase,
+        source=source,
+        repeat=repeat,
+        plan=plan,
+        transport=transport,
+        clock=clock,
+    )
+    jobs[key] = run
+    return run
+
+
 async def evaluate(
     store: TraceStore,
     config: EvaluationConfig,
@@ -224,6 +289,10 @@ async def evaluate(
     transport: httpx.AsyncBaseTransport | None = None,
     clock: Callable[[], float] = time.time,
     git_sha: str | None = None,
+    evaluation_id: str | None = None,
+    resume: bool = False,
+    environment: dict[str, Any] | None = None,
+    replay_only: bool = False,
 ) -> dict[str, Any]:
     tasks = load_tasks()
     selected = set(config.task_ids or [task.id for task in tasks])
@@ -233,12 +302,24 @@ async def evaluate(
             + ", ".join(sorted(selected - {task.id for task in tasks}))
         )
     tasks = [task for task in tasks if task.id in selected]
-    plan = (
-        FaultPlan.model_validate(config.fault_plan)
-        if config.fault_plan is not None
-        else None
+    plan_values = (
+        [config.fault_plan] if config.fault_plan is not None else config.fault_plans
     )
-    evaluation_id = uuid.uuid4().hex
+    plans = [FaultPlan.from_dict(value) for value in plan_values]
+    if len({plan.digest for plan in plans}) != len(plans):
+        raise ValueError("duplicate fault plans")
+    if resume and not evaluation_id:
+        raise ValueError("resume requires an evaluation ID")
+    evaluation_id = evaluation_id or uuid.uuid4().hex
+    previous = [
+        run
+        for run in store.all_runs()
+        if run.config.get("evaluation_id") == evaluation_id
+    ]
+    if previous and not resume:
+        raise ValueError("evaluation ID already exists; explicitly resume it")
+    if resume and not previous:
+        raise ValueError("unknown evaluation ID for resume")
     metadata = {
         "evaluation_id": evaluation_id,
         "evaluation_config": {
@@ -251,18 +332,54 @@ async def evaluate(
         "vllm_flags": config.vllm_flags,
         "evaluation_started_at": clock(),
         "owner_review": "pending",
+        "environment": environment or {},
     }
+    if previous:
+        original = previous[0].config
+        saved = EvaluationConfig.model_validate(
+            original["evaluation_config"]
+        ).model_dump()
+        if saved != metadata["evaluation_config"] or any(
+            original[key] != metadata[key]
+            for key in ("tasks_version", "git_sha", "vllm_version", "vllm_flags")
+        ):
+            raise ValueError(
+                "resume configuration, code, model, or task version changed; start a new cohort"
+            )
+        metadata["evaluation_started_at"] = original["evaluation_started_at"]
+        metadata["owner_review"] = original["owner_review"]
+    jobs = index_runs(previous)
+    if replay_only:
+        if not resume:
+            raise ValueError("replay-only requires an existing evaluation ID")
+        for version in config.versions:
+            for task in tasks:
+                for trial in range(config.trials):
+                    old = jobs.get(
+                        ("record", task.id, trial, version, None, None, None)
+                    )
+                    if (
+                        old is None
+                        or old.finished_at is None
+                        or old.task_success is None
+                        or store.get_evaluation(old.id) is None
+                        or store.get_observations(old.id) is None
+                    ):
+                        raise ValueError(
+                            "replay-only requires all source pairs to be measured first"
+                        )
     sources = []
     for version in config.versions:
         for task in tasks:
             for trial in range(config.trials):
-                source = await run_task(
+                source = await run_slot(
                     store,
                     task,
                     trial,
                     version,
                     config,
                     metadata,
+                    jobs=jobs,
                     transport=transport,
                     clock=clock,
                 )
@@ -271,13 +388,14 @@ async def evaluate(
     for task, source in sources:
         clean = source.task_success is True and not store.findings(source.id)
         for repeat in range(2):
-            run = await run_task(
+            run = await run_slot(
                 store,
                 task,
                 source.trial,
                 source.agent_version,
                 config,
                 {**metadata, "clean_source": clean},
+                jobs=jobs,
                 phase="clean_replay",
                 source=source,
                 repeat=repeat,
@@ -285,26 +403,28 @@ async def evaluate(
             )
             ids.append(run.id)
         if source.agent_version == "v1" and "v2" in config.versions:
-            run = await run_task(
+            run = await run_slot(
                 store,
                 task,
                 source.trial,
                 "v2",
                 config,
                 metadata,
+                jobs=jobs,
                 phase="regression_replay",
                 source=source,
                 clock=clock,
             )
             ids.append(run.id)
-        if source.agent_version == "v1" and clean and plan is not None:
-            run = await run_task(
+        for plan in plans if source.agent_version == "v1" and clean else []:
+            run = await run_slot(
                 store,
                 task,
                 source.trial,
                 "v1",
                 config,
                 metadata,
+                jobs=jobs,
                 phase="fault_replay",
                 source=source,
                 plan=plan,
@@ -314,5 +434,18 @@ async def evaluate(
     return {"evaluation_id": evaluation_id, "run_ids": ids, "backend": config.backend}
 
 
-def run_evaluation(store: TraceStore, config: EvaluationConfig) -> dict[str, Any]:
-    return asyncio.run(evaluate(store, config))
+def run_evaluation(
+    store: TraceStore,
+    config: EvaluationConfig,
+    resume_id: str | None = None,
+    replay_only: bool = False,
+) -> dict[str, Any]:
+    return asyncio.run(
+        evaluate(
+            store,
+            config,
+            evaluation_id=resume_id,
+            resume=resume_id is not None,
+            replay_only=replay_only,
+        )
+    )
