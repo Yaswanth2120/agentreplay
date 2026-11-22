@@ -1,0 +1,144 @@
+backend: live
+model: Qwen/Qwen3-8B
+model_revision: b968826d9c46dd6066d109eabc6255188de91218
+upstream_url: http://127.0.0.1:8000
+versions: [v1, v2]
+trials: 3
+max_steps: 25
+max_tokens: 1024
+chat_template_kwargs: {enable_thinking: false}
+regression_seed: 7
+bootstrap_seed: 1234
+bootstrap_resamples: 10000
+vllm_version: 0.34.0
+vllm_flags:
+  - --host
+  - 127.0.0.1
+  - --port
+  - '8000'
+  - --enable-auto-tool-choice
+  - --tool-call-parser
+  - hermes
+  - --max-model-len
+  - '8192'
+  - --max-num-seqs
+  - '1'
+  - --dtype
+  - bfloat16
+  - --generation-config
+  - vllm
+  - --revision
+  - b968826d9c46dd6066d109eabc6255188de91218
+  - --tokenizer-revision
+  - b968826d9c46dd6066d109eabc6255188de91218
+fault_plans:
+- version: 1
+  seed: 1234
+  faults:
+  - class: llm_timeout
+    target: exchange
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: llm_http_error
+    target: exchange
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: llm_malformed_json
+    target: exchange
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: llm_empty_response
+    target: exchange
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: tool_args_corrupt
+    target: exchange
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: tool_wrong_name
+    target: exchange
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: tool_args_schema_violation
+    target: exchange
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: tool_loop
+    target: exchange
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: tool_exec_timeout
+    target: tool_event
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: tool_exec_error
+    target: tool_event
+    select:
+      seq:
+      - 0
+    params: {}
+- version: 1
+  seed: 1234
+  faults:
+  - class: tool_bad_result
+    target: tool_event
+    select:
+      seq:
+      - 0
+    params:
+      schema:
+        type: object
+      value: null
+- version: 1
+  seed: 1234
+  faults:
+  - class: tool_loop
+    target: tool_event
+    select:
+      seq:
+      - 0

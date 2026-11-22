@@ -30,7 +30,9 @@ agentreplay replay --trace-id <id> --mode strict --port 9000
 - [x] Five deterministic environments, 200 frozen tasks, independent verifiers, reference agent v1/v2 (M7 automated checks)
 - [ ] Owner hand-solve review of 20 tasks
 - [x] Evaluation harness, statistics, and generated reports (M8: 20 tasks × 3 trials per version, offline)
-- [ ] Full live evaluation (200 tasks × 3 trials per version) and 100 manual natural-run labels
+- [x] M9 live-run configuration, resumable runner, and verified backup tooling (offline tests only)
+- [x] Live recording: 200 tasks × 3 trials per version; replay/fault checks and verified off-GPU archive
+- [ ] Owner task review and 100 blind natural-run labels
 - [x] In-process Python tool capture/replay, decorator API, and minimal HTTPX agent (M2 offline tests)
 - [x] Run lifecycle, validated trace export/import, inspection CLI, and two offline golden traces (M3)
 - [x] Per-run replay, structured divergences, control endpoints, run diff, and offline golden-check CLI (M4)
@@ -655,5 +657,60 @@ explicit FP/non-determinism perturbations, reconstruction/side-effect checks,
 blind manual labeling, error rollback, cancellation, and installed-wheel CLI use.
 The existing TestClient warning remains. The early real-vLLM streaming fixture
 check is still outstanding; M9's live work and M10's CI/release checks remain.
-No rental GPU has been started. **M9 is the next milestone that needs a GPU**;
-prepare configuration and preservation scripts before paying for the rental.
+M8 used no rental GPU. The M9 section below records the subsequent live stage.
+
+
+## M9: live execution (owner review pending)
+
+The [live runbook](docs/LIVE_RUN.md) covers setup, exact serving flags, resume,
+streaming smoke capture, manual labeling, and verified copies off the rented GPU.
+`eval.yaml` pins Qwen3-8B model/tokenizer revisions and vLLM, sets bounded generation
+with thinking disabled, and defines all 12 independent fault variants. The GPU
+records v1 then v2 once; fault sweeps and repeat checks use those recordings offline.
+`make live-plan PYTHON=.venv/bin/python` is safe to inspect without a GPU.
+
+Resume keeps completed task/trial/version results, including verified failures,
+and retains abandoned attempts as history. `eval run --resume ID --replay-only`
+refuses missing source measurements and never makes model calls. State/config/code
+checks prevent silent cohort mixing. Backup uses SQLite's WAL-safe API and exports
+real goldens plus a checksummed archive; copying and verifying it off-machine is
+still an owner-driven step, not something a local backup command can claim.
+
+Preparation verification: **673 tests pass**, Ruff and shell syntax checks pass,
+and the non-GPU plan command passes. Tests simulate interruptions, changed
+provenance, multi-plan resume, preserved WAL backups, importable golden exports,
+blind stratified samples, and server/stream preflights with fake transports.
+No dependencies or DB schema version changed. The existing TestClient warning
+remains, and the four pre-existing duplicate files stay untouched.
+
+The automated live stage has now run on the owner-provided A100-SXM4 80 GB using
+`examples/eval-vast-a100.yaml` (vLLM 0.32.0). Both versions have 600 measured source
+runs, followed by 2,400 repeat replays, 600 regression replays, and 5,532 fault
+replays. The actual streamed tool capture is committed under `tests/fixtures/vllm/`
+and passes an offline byte-for-byte replay test without tool execution.
+
+The generated [live report](reports/summary.md) and JSON retain n for every rate.
+These are preliminary programmatic results: the owner's 20-task review and
+100 blind labels remain pending. The report explains repeat determinism, conditional
+clean-source FP eligibility, loop sequence-localization penalties, and unscored
+bad-result faults; no validated benchmark/significance claim is made.
+
+The complete SQLite snapshot and 1,201 golden trace exports are verified locally
+at `results/offbox/final-01/`; the immutable archive is `results/final-01.tar.gz`.
+Checksums and the blind 100-run sample are published in `reports/live/`. Data files
+stay outside Git because the DB is ~341 MiB; the archive is preserved off the rental.
+The instance is left running at the owner's explicit request, with project model
+and evaluation processes stopped. No instance was destroyed.
+
+Validation after the live stage: 676 tests pass, Ruff and shell checks pass.
+Supervisor termination exposed a process-lifecycle issue, now fixed with signal
+handling and an isolated server session; an actual CPU child-process test verifies
+that shutdown also terminates descendants. No model/agent behavior or metric
+arithmetic was changed in response to the live measurements.
+
+Existing issue found in M9 review: natural tool-error text gains a
+`ToolReplayedError` wrapper on replay, so an unchanged agent can diverge after that
+error. It was reproduced offline on v2 `tickets-017` and is documented in the live
+runbook. Clean FP eligibility excludes those failed source runs; repeat determinism
+compares two replays and does not establish source-to-replay equivalence. The agent
+normalization fix remains outside this config/script milestone.

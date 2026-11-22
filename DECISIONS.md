@@ -539,3 +539,106 @@ and its pending review template. Existing TestClient deprecation warning remains
 M8 verification: 658 tests passed, including 55 additional cases (one old-schema
 compatibility case). Ruff and diff checks passed; the clean wheel ran the packaged
 CLI through evaluation and mutable-state replay/reporting without an examples import.
+
+
+## M9 preparation — 2026-11-22 (live acceptance pending)
+
+- Work on feature/m9-live-runner, stacked on the open M8 branch; do not merge
+  earlier PRs implicitly. Only config/scripts and required resume/preservation
+  integration are in scope. M9 cannot be declared complete without real results
+  and an off-machine verified copy; no GPU/SSH endpoint is available yet.
+- Pin the public Qwen3-8B model/tokenizer SHA and vLLM 0.34.0 after checking the
+  official model metadata, Qwen serving guide, and vLLM release. Use Hermes as
+  specified, bounded output/context, and disable thinking via recorded request
+  kwargs. No vLLM/PyTorch dependency is added to the library or installed locally.
+- Support an explicit cohort ID for resume. Logical slots include phase, task,
+  version, trial, source, repeat, and fault-plan identity; a new attempt supersedes
+  an interrupted/unmeasured one without deleting history. Verified failures are
+  completed measurements and never retried to improve the success rate.
+- Resume prechecks code SHA, frozen task hash, normalized settings, model revision,
+  sampling, and serving version/flags. Runtime inventories may change on a new
+  host but are recorded and disclosed in reports. Prior unmeasured rows are marked
+  aborted; effective results select the highest unique attempt per logical slot.
+- Use a nonblocking canonical-DB file lock in the owner runner. Persist session ID
+  before evaluation starts and recognize moved DBs only when the same cohort exists.
+  The normal async API expects callers to avoid concurrent resume of one cohort.
+- Add replay-only resume with a full source-completeness precheck. It can finish
+  offline after copying the DB, without paying for a server or turning unrecorded
+  source tasks into network-error measurements.
+- Expand from one fault_plan to optional independent fault_plans (mutually exclusive
+  settings). Each receives separate CPU-only replay slots and report membership
+  checks; the committed live config covers 11 classes plus both tool-loop targets.
+  This avoids repeating paid source recordings just to evaluate another fault.
+- Capture server argv, process identity, package versions, Python/OS, GPU inventory,
+  driver, and PyTorch CUDA build. The same Python starts vLLM; a process receipt and
+  models check precede a streamed-tool smoke recording. Real CUDA/stream shapes
+  remain unverified until owner hardware is available.
+- Use SQLite backup() under the store lock instead of copying an active WAL DB.
+  Export goldens and reports from the snapshot, preserve smoke fixtures and frozen
+  inputs, and produce checksums plus an archive. Never overwrite outputs; explicitly
+  identify incomplete snapshots. Only the owner/SSH transfer can establish an
+  off-machine copy, so backup locally is not a completion claim.
+- Sample 100 natural live source runs with 20 per environment and a local fixed RNG,
+  without consulting findings or task success. Human labeling/review stay pending.
+- New fields live in existing JSON config and existing result/label tables, so DB
+  schema remains v7. Preserve pre-existing tests and duplicate files; TestClient's
+  known warning remains. No paid provisioning or external messages are authorized
+  or executed by this preparation work.
+
+Preparation checks: 673 tests passed, Ruff passed, shell syntax and non-GPU plan
+passed, and both committed goldens passed. No GPU/model packages were installed
+locally. Real live results and an off-machine archive are still pending hardware.
+
+Flag an existing behavior rather than changing agent semantics outside M9 scope:
+natural EnvironmentError messages acquire a ToolReplayedError wrapper during
+replay. A v2 tickets-017 experiment reproduced completed source / agent_error
+repeats with strict misses. Repeat-to-repeat determinism is not source equivalence;
+clean FP eligibility excludes originally failing sources. A separate normalization
+fix is needed before claiming faithful natural-error replay.
+
+### First owner-provided M9 host
+
+Connected to the supplied Vast instance and read its operating guide. It has an
+A100-SXM4 80 GB, Python 3.12, vLLM 0.32.0, and a nonpersistent workspace. Pause the
+template's unrelated GPT-OSS service and use the installed vLLM environment rather
+than replacing its CUDA/PyTorch stack. The version/port override is explicit in
+examples/eval-vast-a100.yaml before starting a cohort; the generic 0.34.0 plan stays
+available. Model and evaluation processes use supervisor as the host guide requires.
+
+
+### Automated live stage and preserved evidence
+
+Completed both 600-run source versions on the supplied A100 with code/config
+92874a4 and vLLM 0.32.0. The runner then completed 2,400 repeats, 600 regression
+replays, and 5,532 fault replays. Preserve all verified successes and failures;
+search examples that invented codes without tools remain genuine task failures.
+Do not retune the agent/detectors after inspecting these measurements.
+
+Copied the final consistent archive off the GPU and matched its SHA256 and all
+1,209 manifested files. It includes the ~341 MiB DB and 1,201 original golden
+exports. Keep large raw data in ignored local results/; publish generated reports,
+checksums, the blind 100-run sample, and a real SSE regression fixture in Git.
+The original archive remains immutable. Owner review and labels are not fabricated.
+
+Report notes explicitly distinguish repeat-to-repeat determinism from source
+faithfulness, conditional finding-free-source FP rates from all-natural-run FP,
+and loop target localization from loop presence. Mislocalized loop claims retain
+both FP/FN penalties. Bad-result faults without localization remain unscored.
+
+Observed a supervisor shutdown problem: TERM/HUP could kill the wrapper while a
+vLLM engine survived. Fix only that M9 process lifecycle using an isolated session,
+cleanup signal handlers, and descendant-group termination; verify it with both
+signal-path and actual CPU subprocess tests. The existing fake-process test now
+asserts the intended new-session launch argument; no test was weakened. This fix
+and interpretation notes do not alter model behavior, detector rules, or metric
+arithmetic used for the completed cohort.
+
+Owner explicitly requested that the instance remain running. Leave it running;
+stop only completed project processes and preserve management services. Never
+stop/destroy the instance after that preference without a later owner instruction.
+
+Final local verification: 676 tests passed, including actual captured SSE replay,
+TERM/HUP cleanup, and a real CPU descendant-process shutdown test. Ruff and diff
+checks passed. The actual full archive hash and manifest were verified before
+preparing published reports; the original snapshot remains immutable and a working
+DB copy is used for report generation and future human labels.

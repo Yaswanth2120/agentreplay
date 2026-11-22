@@ -8,7 +8,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .canonical import canonical_json
+from .evals.resume import effective_runs
 from .evals.stats import summarize
+from .faults import FaultPlan
 from .store import TraceStore
 
 
@@ -33,6 +36,9 @@ def load_records(
     if not runs:
         raise ValueError("no evaluation runs to report")
     evaluation_id = evaluation_id or runs[-1].config["evaluation_id"]
+    runs = effective_runs(
+        [run for run in runs if run.config["evaluation_id"] == evaluation_id]
+    )
     records = []
     for run in runs:
         if run.config["evaluation_id"] != evaluation_id:
@@ -130,7 +136,20 @@ def validate_cohort(records: list[dict[str, Any]]) -> None:
             raise ValueError("clean replay eligibility differs from its source")
         baseline = source["run"]["agent_version"] == "v1"
         expected_regression = int(baseline and "v2" in config["versions"])
-        expected_fault = int(baseline and clean and config["fault_plan"] is not None)
+        plan_values = (
+            [config["fault_plan"]]
+            if config["fault_plan"] is not None
+            else config.get("fault_plans", [])
+        )
+        plan_ids = {FaultPlan.from_dict(value).digest for value in plan_values}
+        expected_fault = len(plan_ids) if baseline and clean else 0
+        actual_plans = {
+            r["run"]["fault_plan_id"]
+            for r in children
+            if r["run"]["config"]["phase"] == "fault_replay"
+        }
+        if actual_plans != (plan_ids if expected_fault else set()):
+            raise ValueError("evaluation has incomplete fault plan coverage")
         if (
             sum(r["run"]["config"]["phase"] == "regression_replay" for r in children)
             != expected_regression
@@ -154,6 +173,12 @@ def build_report(store: TraceStore, evaluation_id: str | None = None) -> dict[st
     records = load_records(store, evaluation_id)
     metadata = records[0]["run"]["config"]
     settings = metadata["evaluation_config"]
+    history = [
+        run
+        for run in store.all_runs()
+        if run.config.get("evaluation_id") == metadata["evaluation_id"]
+    ]
+    selected_ids = {record["run"]["id"] for record in records}
     return {
         "config": {
             "evaluation_id": metadata["evaluation_id"],
@@ -171,6 +196,22 @@ def build_report(store: TraceStore, evaluation_id: str | None = None) -> dict[st
             "vllm_version": metadata["vllm_version"],
             "vllm_flags": metadata["vllm_flags"],
             "owner_review": metadata["owner_review"],
+            "model_revision": settings.get("model_revision"),
+            "max_tokens": settings.get("max_tokens"),
+            "chat_template_kwargs": settings.get("chat_template_kwargs", {}),
+            "environments": [
+                json.loads(value)
+                for value in sorted(
+                    {
+                        canonical_json(run.config.get("environment", {}))
+                        for run in history
+                        if run.config.get("environment")
+                    }
+                )
+            ],
+            "superseded_attempts": [
+                run.id for run in history if run.id not in selected_ids
+            ],
         },
         "metrics": summarize(records, settings),
         "notes": [
@@ -183,6 +224,9 @@ def build_report(store: TraceStore, evaluation_id: str | None = None) -> dict[st
             "Clean FP denominators include both repeats of successful, finding-free source runs. Determinism compares each source's two repeats.",
             "Task failure is run-level; bad-result faults without localized verification are counted as unscored, never invented detector true positives.",
             "Manual presence-label scores remain separate from injected sequence-label scores; missing denominators are shown as undefined.",
+            "Natural tool failures currently gain a ToolReplayedError wrapper on replay, potentially causing unchanged-agent strict misses. Repeat determinism does not establish equivalence with the source recording.",
+            "Clean FP rates are conditional on successful finding-free source runs, not estimates over all natural runs; independent human labels remain pending.",
+            "Loop P/R includes exact target-sequence localization: an observed loop at a later exchange can count as FP/FN against its causal tool-event label even when loop presence was detected.",
         ],
     }
 

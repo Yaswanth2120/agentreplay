@@ -524,3 +524,27 @@ class TraceStore:
         return [
             EvalLabel(**{**dict(row), "present": bool(row["present"])}) for row in rows
         ]
+
+    def backup(self, path: str | Path) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("xb"):
+            pass
+        saved = False
+        try:
+            destination = sqlite3.connect(str(target))
+            try:
+                with self._lock:
+                    self.conn.backup(destination)
+                if destination.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                    raise ValueError("database backup failed integrity check")
+            finally:
+                destination.close()
+            saved = True
+        finally:
+            if not saved:
+                target.unlink(missing_ok=True)
+
+    def database_path(self) -> str:
+        with self._lock:
+            return self.conn.execute("PRAGMA database_list").fetchone()[2]

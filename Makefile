@@ -18,3 +18,10 @@ eval-offline:
 
 report:
 	PYTHONPATH=src $(PYTHON) -m agentreplay.cli report --db $(DB) --out $(OUT)
+
+.PHONY: eval-live live-plan
+live-plan:
+	PYTHON=$(PYTHON) scripts/run_live.sh plan
+
+eval-live:
+	PYTHON=$(PYTHON) scripts/run_live.sh run --db $(DB)

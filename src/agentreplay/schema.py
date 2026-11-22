@@ -262,8 +262,12 @@ class EvaluationConfig(BaseModel):
     bootstrap_seed: int = 1234
     bootstrap_resamples: int = Field(default=10000, ge=100)
     fault_plan: dict[str, Any] | None = None
+    fault_plans: list[dict[str, Any]] = Field(default_factory=list)
     vllm_version: str = "not-used-scripted"
     vllm_flags: list[str] = Field(default_factory=list)
+    model_revision: str | None = None
+    max_tokens: int | None = Field(default=None, ge=1)
+    chat_template_kwargs: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_selection(self) -> EvaluationConfig:
@@ -273,7 +277,11 @@ class EvaluationConfig(BaseModel):
             not self.task_ids or len(set(self.task_ids)) != len(self.task_ids)
         ):
             raise ValueError("task_ids must be nonempty and unique")
-        if self.fault_plan is not None and "v1" not in self.versions:
+        if self.fault_plan is not None and self.fault_plans:
+            raise ValueError("use fault_plan or fault_plans, not both")
+        if (
+            self.fault_plan is not None or self.fault_plans
+        ) and "v1" not in self.versions:
             raise ValueError("fault replay needs a v1 source")
         if self.backend == "live" and (
             self.model == "scripted-offline" or self.vllm_version == "not-used-scripted"

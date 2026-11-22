@@ -2172,3 +2172,243 @@ Simulates a missing Git executable. Provenance must become explicitly unknown wi
 ### `tests/integration/test_eval_harness.py` — `exercise`
 
 Runs the surrounding asynchronous harness scenario using local injected transports. Explicit store cleanup and assertions keep it offline and isolate each case.
+
+
+## M9 preparation: resumable live execution and preservation
+
+### `src/agentreplay/store.py` — `backup`
+
+Uses the SQLite backup API to copy a consistent committed database, including WAL content. It refuses existing targets, checks integrity, and removes only its own failed output.
+
+### `src/agentreplay/store.py` — `database_path`
+
+Reads the database connection path inside the store layer. Live-session identity checks therefore do not introduce SQL into the runner.
+
+### `src/agentreplay/evals/harness.py` — `run_slot`
+
+Looks up the latest attempt for one logical evaluation slot and reuses measured results, including failures. Unmeasured interruptions are retained as aborted history before a new attempt is executed.
+
+### `src/agentreplay/evals/resume.py` — `job_key`
+
+Builds a logical identity from task/version/trial, phase, source, repeat, and fault plan. Distinguishing plans prevents one completed fault variant from incorrectly skipping another.
+
+### `src/agentreplay/evals/resume.py` — `index_runs`
+
+Selects the greatest attempt number for each logical identity and rejects duplicate attempts. This makes resume and reporting agree while preserving the underlying audit rows.
+
+### `src/agentreplay/evals/resume.py` — `effective_runs`
+
+Returns the selected latest runs in their original storage order. Superseded attempts stay in the database but are excluded from measured rates.
+
+### `src/agentreplay/evals/preservation.py` — `file_sha256`
+
+Hashes file contents in bounded-size blocks. Large databases and archives can be verified without loading them into memory.
+
+### `src/agentreplay/evals/preservation.py` — `preserve`
+
+Creates a consistent snapshot, original trace exports, provenance, frozen inputs, reports when complete, and a checksummed archive. It exports from the snapshot and never overwrites an existing backup target.
+
+### `src/agentreplay/evals/preservation.py` — `verify_backup`
+
+Checks every manifested file hash and rejects paths escaping the backup directory. A verified local archive is still distinct from the owner copying it off the GPU host.
+
+### `src/agentreplay/evals/live.py` — `server_command`
+
+Validates pinned model/tokenizer revisions, loopback routing, and a limited set of serving flags before building argv. The same Python executable starts the captured vLLM environment without a shell command string.
+
+### `src/agentreplay/evals/live.py` — `collect_environment`
+
+Captures installed package versions, Python/OS, GPU inventory/driver, and PyTorch CUDA build after checking the pinned vLLM version. It reads selected device visibility rather than dumping environment variables or credentials.
+
+### `src/agentreplay/evals/live.py` — `write_json`
+
+Writes JSON through a temporary sibling file and renames it into place. Session/receipt files avoid partially written JSON after an interruption.
+
+### `src/agentreplay/evals/live.py` — `serve`
+
+Starts the validated model-server command and records its PID, argv, and environment receipt. It updates exit status and cleans up a still-running child when the owner stops the wrapper.
+
+### `src/agentreplay/evals/live.py` — `validate_receipt`
+
+Checks the recorded command/version against the live configuration and Linux process identity. A stale or mismatched receipt cannot silently stand in for the configured server.
+
+### `src/agentreplay/evals/live.py` — `capture_smoke`
+
+Records a real streamed addition tool call through the proxy and checks chunks, arguments, and result before exporting it. The run is finalized on failures, and full evaluation stops if tool/stream compatibility is not demonstrated.
+
+### `src/agentreplay/evals/live.py` — `sample_labels`
+
+Chooses a fixed-seed stratified sample of natural live source runs without inspecting findings or success. It returns only identity/task metadata and refuses insufficient environment counts.
+
+### `src/agentreplay/evals/live.py` — `live_run`
+
+Checks model advertisement, saves or validates session identity, captures the stream smoke, and resumes the same evaluation. Moved databases are recognized by cohort membership rather than silently creating replacement paid observations.
+
+### `src/agentreplay/evals/live.py` — `main`
+
+Exposes plan, serve, run, backup, verify, and manual-sample commands for the owner. Live execution uses a nonblocking database lock, while plan and backup verification work without a GPU.
+
+### `tests/integration/test_live_preparation.py` — `config`
+
+Constructs a small evaluation configuration with bounded output and explicit thinking settings. Tests can exercise resume and request fidelity without a model server.
+
+### `tests/integration/test_live_preparation.py` — `test_complete_resume_skips_paid_calls_including_failed_task_results`
+
+Checks complete resume skips paid calls including failed task results. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_cancelled_attempt_is_retried_without_repeating_completed_pairs`
+
+Checks cancelled attempt is retried without repeating completed pairs. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_hard_interrupted_unfinished_row_is_aborted_then_retried`
+
+Checks hard interrupted unfinished row is aborted then retried. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_resume_refuses_changed_provenance_and_unknown_cohorts`
+
+Checks resume refuses changed provenance and unknown cohorts. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_fault_sweep_reuses_live_sources_and_resumes_each_plan`
+
+Checks fault sweep reuses live sources and resumes each plan. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_consistent_backup_with_open_wal_and_goldens_round_trip`
+
+Checks consistent backup with open wal and goldens round trip. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_partial_backup_is_disclosed_and_manifest_paths_validated`
+
+Checks partial backup is disclosed and manifest paths validated. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_live_plan_is_local_pinned_and_does_not_start_gpu`
+
+Checks live plan is local pinned and does not start gpu. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_real_stream_smoke_capture_against_fake_fragmented_sse`
+
+Checks real stream smoke capture against fake fragmented sse. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_server_receipt_and_environment_capture_are_checked`
+
+Checks server receipt and environment capture are checked. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_server_process_exit_updates_receipt`
+
+Checks server process exit updates receipt. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_live_session_is_saved_before_work_and_database_identity_checked`
+
+Checks live session is saved before work and database identity checked. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_manual_sample_is_stratified_deterministic_and_contains_no_detector_output`
+
+Checks manual sample is stratified deterministic and contains no detector output. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_replay_only_resume_cannot_make_new_model_calls`
+
+Checks replay only resume cannot make new model calls. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `test_all_live_fault_variants_execute_offline_without_rerecording_sources`
+
+Checks all live fault variants execute offline without rerecording sources. The assertions use temporary databases and mocked transports/processes, so no GPU or live network connection is involved.
+
+### `tests/integration/test_live_preparation.py` — `upstream`
+
+Captures an HTTPX request and returns scripted data through a fake transport. Request counts prove that completed source pairs and fault sweeps do not spend additional model calls.
+
+### `tests/integration/test_live_preparation.py` — `exercise`
+
+Runs the surrounding asynchronous interruption or resume scenario with local transports. Assertions check persisted attempt history, outcomes, and absence of duplicate calls.
+
+### `tests/integration/test_live_preparation.py` — `interrupted`
+
+Cancels a selected trial after an earlier trial has completed. Resume must retry the interrupted slot while preserving the earlier measured result.
+
+### `tests/integration/test_live_preparation.py` — `upstream`
+
+Captures an HTTPX request and returns scripted data through a fake transport. Request counts prove that completed source pairs and fault sweeps do not spend additional model calls.
+
+### `tests/integration/test_live_preparation.py` — `interrupt`
+
+Simulates stopping between two task slots before the next row is created. The test can also insert an unfinished row to model a hard process kill.
+
+### `tests/integration/test_live_preparation.py` — `upstream`
+
+Captures an HTTPX request and returns scripted data through a fake transport. Request counts prove that completed source pairs and fault sweeps do not spend additional model calls.
+
+### `tests/integration/test_live_preparation.py` — `upstream`
+
+Captures an HTTPX request and returns scripted data through a fake transport. Request counts prove that completed source pairs and fault sweeps do not spend additional model calls.
+
+### `tests/integration/test_live_preparation.py` — `bad`
+
+Returns a fake upstream HTTP error during the smoke check. The captured run must finalize instead of remaining active.
+
+### `tests/integration/test_live_preparation.py` — `cmdline`
+
+Returns the expected null-delimited process argv for a fake Linux PID. Other file reads retain their original behavior so process validation is tested without a server.
+
+### `tests/integration/test_live_preparation.py` — `client`
+
+Injects a fake models endpoint into the live-session preflight. No socket connection is needed to test session persistence and DB identity.
+
+### `tests/integration/test_live_preparation.py` — `smoke_capture`
+
+Creates a local smoke placeholder in a session-lifecycle test. This isolates session recovery from separately tested stream recording.
+
+### `tests/integration/test_live_preparation.py` — `evaluation`
+
+Checks that session identity was saved before orchestration begins. Captured arguments prove repeat calls resume the expected cohort.
+
+### `tests/integration/test_live_preparation.py` — `forbidden`
+
+Fails if a completed replay-only resume executes another task. This makes the no-new-model-work boundary observable.
+
+### `tests/integration/test_live_preparation.py` — `upstream`
+
+Captures an HTTPX request and returns scripted data through a fake transport. Request counts prove that completed source pairs and fault sweeps do not spend additional model calls.
+
+### `tests/integration/test_live_preparation.py` — `wait`
+
+Simulates a model-server child exiting successfully. The receipt lifecycle can be verified without invoking vLLM or a GPU.
+
+### `tests/integration/test_live_preparation.py` — `poll`
+
+Reports that the fake server child is already stopped. The test ensures normal exit updates the receipt rather than leaving it marked running.
+
+### `scripts/run_live.sh`
+
+Resolves the repository root and executes the owner-selected Python interpreter with the live CLI. Strict shell errors and an explicit source path keep invocation consistent without provisioning paid resources.
+
+### `tests/integration/test_real_vllm_fixture.py` — `test_actual_vllm_stream_and_tool_result_replay_without_execution`
+
+Imports an actual Qwen3/vLLM stream capture and checks its reassembled tool call and recorded result. It then requires byte-identical SSE replay and forbids executing the tool callback, with zero finish findings.
+
+
+### `src/agentreplay/evals/live.py` — `stop_server_wrapper`
+
+Turns TERM/HUP into a controlled exit so the server wrapper enters its cleanup block. This lets supervisor shutdown stop the isolated child session instead of leaving GPU workers behind.
+
+### `tests/integration/test_live_preparation.py` — `test_supervisor_signal_cleans_server_session_and_restores_handlers`
+
+Invokes the registered stop handler during a fake server wait and requires child/session cleanup plus an exited receipt. It also checks that the caller's prior signal handlers are restored.
+
+### `tests/integration/test_live_preparation.py` — `test_shutdown_terminates_real_child_process_group_without_gpu`
+
+Launches an actual CPU parent/child process tree and stops it through the server wrapper. A child-written termination marker proves descendant cleanup without starting a model or using the network.
+
+### Shutdown-test `start` helpers
+
+Construct fake or real wrapped processes only when the server requests an isolated session. The explicit assertion makes the changed process-launch contract testable rather than silently accepting arbitrary kwargs.
+
+### Shutdown-test process methods: `__init__`, `returncode`, `poll`, `terminate`, and `wait`
+
+`__init__` starts the CPU fixture in its own session and remembers its identity. This models the process boundary used by the GPU server.
+
+`returncode` exposes the actual child's completion status. Delegating it keeps the receipt assertion tied to the real process.
+
+`poll` asks whether the fixture is still alive. It lets the wrapper decide whether termination is necessary.
+
+`terminate` sends the normal stop signal to the fixture parent. Descendant cleanup remains the wrapper's separate responsibility.
+
+`wait` first checks that the descendant is ready and triggers the installed stop handler, then delegates later waits. This exercises cleanup deterministically without sending a signal to the test runner itself.
