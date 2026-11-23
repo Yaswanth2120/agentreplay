@@ -117,7 +117,7 @@ Given the same trace, the same agent code, and an agent that is deterministic gi
 - [x] Owner-authorized AI-assisted replacement: 20 task solutions checked and 100 natural-run judgments recorded separately from human labels. Independent human review was not performed.
 - [x] M10 clean-clone CI matrix (Python 3.10–3.12) and fresh Python 3.12 quickstart verified.
 - [x] Release-hardening fixes verified: 693 tests, Python 3.10–3.12 CI, 1,200/1,200 source replays, and 922/922 localized loop injections (post-hoc development checks).
-- [ ] Final v0.1.0 package, CI, and release tag verified.
+- [x] v0.1.0 package, fresh-install quickstart, wheel installation, and Python 3.10–3.12 CI verified. [Release status and artifacts](https://github.com/Yaswanth2120/agentreplay/releases/tag/v0.1.0).
 
 Development uses feature branches and pull requests. Run `make test`, `make lint`, and `make check-golden` before submitting changes. CI installs the package and runs the same offline checks on Python 3.10, 3.11, and 3.12; tests block real socket connections. Dependency installation itself requires network access. Only the dependencies declared in `pyproject.toml` are required; vLLM is external to the library.
 
@@ -126,3 +126,5 @@ M10 verification: **676 tests passed** locally and on each GitHub matrix version
 Release-hardening follow-up: [generated verification JSON](reports/release-verification.json) records the new code SHA separately from the original live recording SHA. All 1,200 source comparisons passed and 922 loop injections scored 922 TP, 0 FP, 0 FN. These checks reuse archived data and do not establish independent human validation. See [release review record](docs/RELEASE.md) for the owner-authorized AI-assisted scope and optional future human-review procedure.
 
 Version **0.1.0** uses frozen SQLite schema 7 and `agentreplay.trace.v1`. To regenerate the AI-assisted release report without writing human labels, run `python -m scripts.finalize_ai_review --db results/live-review.db --out reports/release` with a new output directory. Original M9 reports remain unchanged in `reports/summary.*`.
+
+Final v0.1.0 verification: **702 tests passed**, Ruff and golden replay checks passed, and all three Python CI jobs passed. The README quickstart ran verbatim from a clean checkout in a fresh Python 3.12 virtualenv; the release wheel was installed separately and verified to include all 200 tasks and pass golden replay. The release is software-complete under the owner-authorized AI-assisted review scope; independent human validation is not claimed.
