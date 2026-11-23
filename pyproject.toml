@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentreplay"
-version = "0.0.1"
+version = "0.1.0"
 description = "Record and deterministically replay AI agent LLM/tool traffic for regression testing."
 requires-python = ">=3.10"
 dependencies = [

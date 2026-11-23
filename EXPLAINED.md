@@ -2458,3 +2458,49 @@ Creates an offline cohort with both loop plan targets, then invokes the follow-u
 ### `test_release_followup_rejects_missing_cohort_before_copy`
 
 Rejects empty or unknown source cohorts before creating a destination database. This prevents a failed configuration from looking like a valid verification artifact.
+
+## AI-assisted release review
+
+### `scripts.finalize_ai_review.file_sha`
+
+Hashes exact evidence or sample bytes for provenance. This prevents a reviewed input from being silently substituted after judgments were recorded.
+
+### `scripts.finalize_ai_review.check_task_review`
+
+Checks AI identity, the frozen task hash, and exact coverage of the selected 20 tasks, then compares the saved reasoned solutions with their verifier goals. It rejects incorrect or incomplete solutions rather than treating a review-complete flag as evidence.
+
+### `scripts.finalize_ai_review.check_label_review`
+
+Validates all 100 saved judgments against original source identities and blinded transcript hashes before loading findings. It returns in-memory AI labels for comparison and never writes human eval_labels.
+
+### `scripts.finalize_ai_review.release_report`
+
+Builds a full report from the original measured cohort, then adds separately named AI-assisted metrics and a review-provenance overlay. Historical owner-review metadata and human/manual scores stay unchanged, while limitations explicitly prohibit independent-validation claims.
+
+### `scripts.finalize_ai_review.main`
+
+Wires the report builder to CLI paths and writes Markdown/JSON into a new directory. Refusing an existing output directory preserves prior measurements and prevents unnoticed report replacement.
+
+### `tests.integration.test_ai_review.ai_evidence`
+
+Constructs isolated natural-run fixtures with the fixed sample's identities and freshly computed transcript hashes. These fixtures test evidence validation without accessing the large local live database or inventing human judgments.
+
+### `test_task_review_checks_reasoned_solutions_against_frozen_goals`
+
+Requires the actual saved solutions to cover all 20 tasks and pass goal comparison. A wrong proposed answer and a stale task hash must be rejected.
+
+### `test_ai_labels_reject_untrusted_or_incomplete_evidence`
+
+Tests forged human identity, missing/duplicate coverage, changed transcripts, wrong task identity, and non-boolean answers. These negative cases prevent plausible-looking but unauditable labels from entering the release report.
+
+### `test_ai_report_separates_human_metrics_and_preserves_historical_status`
+
+Requires all AI scores to appear in their own namespace while human labels and original status remain untouched. It also verifies undefined precision/recall on an all-negative sample and the rendered AI count rows.
+
+### `test_ai_report_command_preserves_existing_output`
+
+Attempts to reuse an existing report directory and expects a configuration error. Its original summary marker must remain byte-identical.
+
+### Review-template test `selected` helper
+
+Extracts the task IDs and difficulties from generated and completed review tables. It checks that adding review judgments did not silently change the random sample, while the separate original-template fixture retains full byte-level generation coverage.

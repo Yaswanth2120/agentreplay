@@ -225,7 +225,18 @@ def test_generation_cli_writes_reproducible_corpus_and_pending_review(
     )
     assert output.read_bytes() == TASKS_PATH.read_bytes()
     assert corpus.read_bytes() == CORPUS_PATH.read_bytes()
-    assert review.read_bytes() == (DATA.parent / "REVIEW.md").read_bytes()
+    # A completed review is editable evidence; the generator still emits the
+    # original pending template byte for byte, never fabricated completed reviews.
+    pending = Path(__file__).parent / "fixtures/pending-task-review.md"
+    assert review.read_bytes() == pending.read_bytes()
+    selected = lambda text: [
+        line.split("|")[1:3]
+        for line in text.splitlines()
+        if line.startswith("| ") and line.split("|")[1].strip() != "Task"
+    ]
+    assert selected(review.read_text()) == selected(
+        (DATA.parent / "REVIEW.md").read_text()
+    )
     rows = [line for line in review.read_text().splitlines() if line.startswith("| ")][
         1:
     ]

@@ -56,7 +56,7 @@ flowchart TD
 
 [Design](docs/DESIGN.md) describes matching, storage, streams, faults, and independent detector scoring. [Milestone history](docs/MILESTONES.md) preserves implementation details and API examples. [Live-run guide](docs/LIVE_RUN.md) covers configuration, resume, backup, and manual labeling.
 
-## Results (preliminary; owner review pending)
+## Results (AI-assisted review; no independent human validation)
 
 Qwen/Qwen3-8B, 200 frozen tasks across five environments, three trials per version. These rows are copied verbatim from the generated [live report](reports/summary.md); complete detector counts, confidence intervals, model revision, code SHA, and environment are recorded there.
 
@@ -79,7 +79,7 @@ Qwen/Qwen3-8B, 200 frozen tasks across five environments, three trials per versi
 
 Repeat determinism compares two replays with each other, not with the original execution. The clean false-positive rate is conditional on successful, finding-free source runs. In the original M9 runner, natural tool errors could change the next replay request because the reference agent included the `ToolReplayedError` wrapper in its tool message. The original loop detector could find the loop but miss its injected target sequence (755 TP, 167 FP, 167 FN across 922 injected loop faults). These original measurements remain unchanged. The release-hardening branch normalizes replayed error text and associates repeated calls with a unique earlier matching execution; it never guesses among multiple matching executions or reads fault labels. Follow-up checks are documented in [release review](docs/RELEASE.md).
 
-The owner must hand-solve 20 tasks in [REVIEW.md](src/agentreplay/evals/REVIEW.md) and blindly label the [100 selected natural runs](reports/live/manual-sample.json). Until then these results are not a validated benchmark and no significance claim is made. [Archive receipts](reports/live/README.md) document the verified local backup; raw trace data is kept outside Git.
+The owner authorized replacing the planned human review with an explicitly AI-assisted review: [20 reasoned task solutions](reviews/ai-task-solutions.json) and [100 natural-run judgments](reviews/ai-natural-labels.json) are complete. All three presence labels were negative in this sample; natural-positive recall/precision remain undefined. The same AI implemented the detectors and knew prior aggregate results, so this is not independent human validation. No validated benchmark or significance claim is made. The [release report](reports/release/summary.md) adds AI metrics separately from human/manual scores and retains original experiment provenance. [Archive receipts](reports/live/README.md) document the verified local backup; raw trace data is kept outside Git.
 
 Reproduce reports from the preserved working database:
 
@@ -114,13 +114,15 @@ Given the same trace, the same agent code, and an agent that is deterministic gi
 
 - [x] M1–M8 automated implementation: streams, tool replay, run isolation, portable traces, faults, detectors, 200 tasks, verifiers, evaluation, and statistics.
 - [x] M9 live recordings and replay/fault evaluation; verified database and golden exports saved off the GPU.
-- [ ] Owner review of 20 tasks and blind labels on 100 natural runs.
+- [x] Owner-authorized AI-assisted replacement: 20 task solutions checked and 100 natural-run judgments recorded separately from human labels. Independent human review was not performed.
 - [x] M10 clean-clone CI matrix (Python 3.10–3.12) and fresh Python 3.12 quickstart verified.
 - [x] Release-hardening fixes verified: 693 tests, Python 3.10–3.12 CI, 1,200/1,200 source replays, and 922/922 localized loop injections (post-hoc development checks).
-- [ ] Final release review and `v0.1.0` tag.
+- [ ] Final v0.1.0 package, CI, and release tag verified.
 
 Development uses feature branches and pull requests. Run `make test`, `make lint`, and `make check-golden` before submitting changes. CI installs the package and runs the same offline checks on Python 3.10, 3.11, and 3.12; tests block real socket connections. Dependency installation itself requires network access. Only the dependencies declared in `pyproject.toml` are required; vLLM is external to the library.
 
 M10 verification: **676 tests passed** locally and on each GitHub matrix version; Ruff, installed golden checks, and trace round trips passed. The quickstart was run verbatim from a clean checkout in a new Python 3.12 virtualenv. See the [CI run](https://github.com/Yaswanth2120/agentreplay/actions/runs/45072530092). The existing FastAPI/Starlette TestClient HTTPX deprecation warning is retained; no unapproved dependency was added.
 
-Release-hardening follow-up: [generated verification JSON](reports/release-verification.json) records the new code SHA separately from the original live recording SHA. All 1,200 source comparisons passed and 922 loop injections scored 922 TP, 0 FP, 0 FN. These checks reuse archived data and do not replace independent owner review. See [release review instructions](docs/RELEASE.md) for the remaining human work.
+Release-hardening follow-up: [generated verification JSON](reports/release-verification.json) records the new code SHA separately from the original live recording SHA. All 1,200 source comparisons passed and 922 loop injections scored 922 TP, 0 FP, 0 FN. These checks reuse archived data and do not establish independent human validation. See [release review record](docs/RELEASE.md) for the owner-authorized AI-assisted scope and optional future human-review procedure.
+
+Version **0.1.0** uses frozen SQLite schema 7 and `agentreplay.trace.v1`. To regenerate the AI-assisted release report without writing human labels, run `python -m scripts.finalize_ai_review --db results/live-review.db --out reports/release` with a new output directory. Original M9 reports remain unchanged in `reports/summary.*`.
