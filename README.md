@@ -116,9 +116,11 @@ Given the same trace, the same agent code, and an agent that is deterministic gi
 - [x] M9 live recordings and replay/fault evaluation; verified database and golden exports saved off the GPU.
 - [ ] Owner review of 20 tasks and blind labels on 100 natural runs.
 - [x] M10 clean-clone CI matrix (Python 3.10–3.12) and fresh Python 3.12 quickstart verified.
-- [ ] Release-hardening fixes verified against archived traces and CI.
+- [x] Release-hardening fixes verified: 693 tests, Python 3.10–3.12 CI, 1,200/1,200 source replays, and 922/922 localized loop injections (post-hoc development checks).
 - [ ] Final release review and `v0.1.0` tag.
 
 Development uses feature branches and pull requests. Run `make test`, `make lint`, and `make check-golden` before submitting changes. CI installs the package and runs the same offline checks on Python 3.10, 3.11, and 3.12; tests block real socket connections. Dependency installation itself requires network access. Only the dependencies declared in `pyproject.toml` are required; vLLM is external to the library.
 
 M10 verification: **676 tests passed** locally and on each GitHub matrix version; Ruff, installed golden checks, and trace round trips passed. The quickstart was run verbatim from a clean checkout in a new Python 3.12 virtualenv. See the [CI run](https://github.com/Yaswanth2120/agentreplay/actions/runs/45072530092). The existing FastAPI/Starlette TestClient HTTPX deprecation warning is retained; no unapproved dependency was added.
+
+Release-hardening follow-up: [generated verification JSON](reports/release-verification.json) records the new code SHA separately from the original live recording SHA. All 1,200 source comparisons passed and 922 loop injections scored 922 TP, 0 FP, 0 FN. These checks reuse archived data and do not replace independent owner review. See [release review instructions](docs/RELEASE.md) for the remaining human work.

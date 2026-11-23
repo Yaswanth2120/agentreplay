@@ -14,6 +14,8 @@ This first backs up the source into a separate database, then runs the current r
 
 The generated JSON records both the source recording SHA and follow-up code SHA, denominators, confidence intervals, and derived run IDs. It is post-hoc development evidence, not independent validation or a new live-model benchmark. The original `reports/summary.*`, source measurements, archive, and fault labels remain unchanged. `agentreplay report` should not be used to present this verification-only subset as a complete new live cohort.
 
+The committed [verification JSON](../reports/release-verification.json) records the completed follow-up: 1,200/1,200 source replays matched and 922 loop injections produced 922 TP, 0 FP, 0 FN. Code SHA and original recording SHA are recorded separately; no new live-model performance claim follows from these development checks.
+
 ## Owner: hand-solve 20 tasks
 
 Use the fixed rows in [REVIEW.md](../src/agentreplay/evals/REVIEW.md). Read each instruction and tool contracts before inspecting verifier parameters. This command displays only the selected instructions and tool contracts:
