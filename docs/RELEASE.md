@@ -1,6 +1,6 @@
-# Release review and remaining owner work
+# Release review — owner-authorized AI-assisted scope
 
-The implementation and CI are in place. Final `v0.1.0` publication still requires the independent owner judgments mandated by AGENTS.md sections 11.2 and 11.4. No model inference or rented GPU is needed for these steps. Do not fill review rows or labels from automated test outcomes or detector predictions.
+On 2026-11-23 the owner explicitly selected "Use AI-assisted review; document the limitation." This replaces the planned human-only gate for v0.1.0. The 20 AI task solutions and 100 AI natural-run judgments are recorded in reviews/; they are not owner-authored or human-validated. No GPU was used. The same AI implemented detectors and had prior aggregate knowledge, so independence and fully blind human review are not claimed. Judgments were committed before comparing per-task goals and per-run findings.
 
 ## Automated release follow-up
 
@@ -16,7 +16,7 @@ The generated JSON records both the source recording SHA and follow-up code SHA,
 
 The committed [verification JSON](../reports/release-verification.json) records the completed follow-up: 1,200/1,200 source replays matched and 922 loop injections produced 922 TP, 0 FP, 0 FN. Code SHA and original recording SHA are recorded separately; no new live-model performance claim follows from these development checks.
 
-## Owner: hand-solve 20 tasks
+## Optional future independent human review: 20 tasks
 
 Use the fixed rows in [REVIEW.md](../src/agentreplay/evals/REVIEW.md). Read each instruction and tool contracts before inspecting verifier parameters. This command displays only the selected instructions and tool contracts:
 
@@ -38,7 +38,7 @@ PY
 
 Record your actual steps, result, solvability judgment, verifier correctness judgment, name, and date in REVIEW.md. Inspect the verifier only after your solution. Report mismatches rather than silently marking them correct. A task/verifier correction requires a new evaluation version and a decision about which live measurements it invalidates.
 
-## Owner: blind labels on 100 natural runs
+## Optional future independent human labels: 100 natural runs
 
 The fixed [manual sample](../reports/live/manual-sample.json) contains 20 runs per environment, selected before owner judgments. Label the original natural runs, not the new post-fix replays. Use the working database; the immutable backup stays untouched. Start one run with:
 
@@ -48,4 +48,14 @@ agentreplay label --db results/live-review.db --run-id 20cfc5a9d6ae404aa916bbfbd
 
 The CLI displays the observed transcript without detector findings or verifier success and asks whether `loop`, `invalid_tool_call`, and `timeout` are present. Complete all three y/n judgments to save a run's labels. Do not inspect its findings first. Repeat for all IDs in the sample; the sample file itself contains no judgments.
 
-After both reviews, preserve a new consistent database backup and generate a new report into a separate directory. Record which review and labels it includes; never replace the immutable original archive. The report's owner-review status also needs to be reconciled with actual completed review evidence before claiming validation. Fix any review findings, rerun the appropriate checks, set package version to `0.1.0` in both pyproject.toml and `src/agentreplay/__init__.py`, and create the final release tag only when the review is genuinely complete.
+## Generate the release review report
+
+```bash
+python -m scripts.finalize_ai_review --db results/live-review.db --out reports/release
+```
+
+Use a new output directory. The command validates exact sample coverage, frozen task/sample hashes, source identities, actual blinded transcript hashes, proposed task solutions, and AI reviewer identity. It reads findings only after validating all saved judgments and adds an `ai_assisted` metrics namespace to a report built from the original complete cohort. It writes no eval_labels and never changes stored owner_review metadata. The release-review overlay records AI completion while human validation stays explicitly unperformed. Output refuses overwrite.
+
+The final [report](../reports/release/summary.md) includes all original live metrics with AI labels clearly separate. Every AI label is negative for these three kinds, so precision/recall are undefined; absence agreement is not evidence of sensitivity. Neither the original live statistics nor this AI-assisted review establish an independently validated benchmark. Original M9 report/archive and the separate post-fix verification are preserved.
+
+For a later human review, use a fresh sample if the reviewer has seen AI answers or findings. Preserve its provenance and results separately, then regenerate the appropriate report rather than relabeling AI judgments as human work.

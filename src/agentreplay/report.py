@@ -292,7 +292,10 @@ def render_markdown(report: dict[str, Any]) -> str:
         "| Source | Kind | TP | FP | FN | TN | Labeled runs |",
         "|---|---|---:|---:|---:|---:|---:|",
     ]
-    for source in ("injected", "manual"):
+    sources = ["injected", "manual"]
+    if "ai_assisted" in report["metrics"]:
+        sources.append("ai_assisted")
+    for source in sources:
         for kind, counts in report["metrics"][source]["per_kind"].items():
             lines.append(
                 f"| {source} | {kind} | {counts['tp']} | {counts['fp']} | {counts['fn']} | {counts.get('tn', '—')} | {counts.get('n_labeled', '—')} |"

@@ -4,6 +4,12 @@ Single source of truth for the project. Save as `AGENTS.md` in the repo root. Re
 
 ---
 
+## Authorized release-review amendment — 2026-11-23
+
+The owner explicitly selected: "Use AI-assisted review; document the limitation." For the v0.1.0 release, this replaces the owner-only hand-solve review and 100 human blind-label requirement in sections 11.2/11.4 with 20 documented AI task solutions and 100 explicitly AI-authored natural-run presence judgments. Keep these artifacts and metrics separate from human eval_labels, record reviewer identity and original transcript hashes, and disclose that the same AI implemented detectors and had seen prior aggregate results. Per-run findings must be withheld until judgments are saved. Do not claim independent human validation, validated benchmark quality, or significance from this substitution. Original recording metadata and measurements remain immutable. Release may proceed when the amended review, automated checks, documentation, and version/tag requirements are complete.
+
+---
+
 ## 0. How to work (session protocol)
 
 1. The owner starts each session with: `Work on Milestone N.` Do only that milestone.
