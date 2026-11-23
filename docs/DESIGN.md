@@ -26,7 +26,7 @@ A missing LLM match produces HTTP 409 and a `replay_miss` finding with hash, nea
 
 `streaming.py` preserves SSE data lines and reassembles choice/tool-index fragments. Content and tool arguments concatenate in order; usage-only chunks remain captured. Timeouts/connect errors are stored with status 599 and returned as 502. Mid-stream errors retain partial chunks; once headers are sent the client status cannot be changed. Replay emits stored data immediately and a terminal `[DONE]`, including for partial recordings. Stream/non-stream conversion is supported with a `stream_mismatch` warning; transport boundaries and timing are not simulated. A real Qwen3/vLLM SSE fixture supplements generated fixtures.
 
-`tools.py` executes synchronous functions in record mode, snapshots JSON results/errors, and re-raises original exceptions after recording. Replay returns stored JSON or raises `ToolReplayedError` carrying the original error string; it cannot reconstruct arbitrary exception classes. Callers normalizing errors must account for that wrapper. The current reference agent does not yet normalize it, so a natural tool error can cause an unchanged-agent replay miss. The live report discloses this limitation instead of treating repeat-to-repeat equality as source fidelity.
+`tools.py` executes synchronous functions in record mode, snapshots JSON results/errors, and re-raises original exceptions after recording. Replay returns stored JSON or raises `ToolReplayedError` carrying the original error string; it cannot reconstruct arbitrary exception classes. Callers normalizing errors must account for that wrapper. The reference agent now returns the original stored error string when it catches this wrapper, preserving the next request. The original M9 runner did not normalize it; its unchanged measurements remain disclosed in the live report. Repeat-to-repeat equality alone does not establish source fidelity.
 
 ## Faults and independent detection
 
@@ -34,7 +34,7 @@ Versioned YAML fault plans have a seed, validated selectors, and a canonical pla
 
 `detectors.py` contains pure functions receiving a sanitized `RunView`. It cannot read storage, network, fault plans, or labels. `detection.py` adapts persisted observations and stores detector findings. Invalid calls, loops, timeout, malformed responses, HTTP errors, tool errors, and request budget violations have configurable thresholds. Replay divergences belong to replay; task failure belongs to the verifier/harness.
 
-Loop detection considers emitted calls and associates executed events without counting the same call twice. Exact localization can disagree with an injected causal tool-event target when a loop is emitted in a later response after a batch. This remains an FP/FN in injected scoring; the detector must not inspect labels to improve its score.
+Loop detection considers emitted calls and associates executed events without counting the same call twice. When the first call in a detected loop has no execution, the detector now associates it with an earlier matching execution only if that observed signature has exactly one such execution. This is an observable association, not a claim of hidden causality. Multiple matching executions remain ambiguous and retain no tool-event location; exchange localization is preserved. Thresholds, counting, and labels are unchanged. The original M9 mislocalizations remain FP/FN in the archived report; follow-up measurements are separate and explicitly post-hoc.
 
 ## Evaluation and reporting
 

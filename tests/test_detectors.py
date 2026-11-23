@@ -408,3 +408,37 @@ def test_detector_module_is_label_storage_and_clock_independent(
     )
     for name in ("store", "faults", "fault_runtime"):
         assert name not in detectors.__dict__
+
+
+@pytest.mark.parametrize("count", [2, 3])
+@pytest.mark.parametrize("prior_matches", [0, 1, 2])
+def test_loop_after_batch_uses_only_unique_observed_execution(
+    count: int, prior_matches: int
+) -> None:
+    first = exchange(response=chat_resp(None, tool=("add", '{"a":1}')))
+    items = first.response["choices"][0]["message"]["tool_calls"]
+    template = copy.deepcopy(items[0])
+    items[:] = [copy.deepcopy(template) for _ in range(prior_matches)]
+    items.append({"function": {"name": "other", "arguments": "{}"}})
+    repeated = exchange(1, response=chat_resp(None, tool=("add", '{"a":1}')))
+    repeated.response["choices"][0]["message"]["tool_calls"][:] = [
+        copy.deepcopy(template) for _ in range(count)
+    ]
+    events = [tool_event(i) for i in range(prior_matches)]
+    events.append(tool_event(prior_matches, name="other", args={}))
+    findings = detect_loop(view([first, repeated], events))
+    assert bool(findings) == (count == 3)
+    if findings:
+        assert findings[0].exchange_seq == 1
+        assert findings[0].tool_seq == (0 if prior_matches == 1 else None)
+        assert findings[0].evidence["start_call"] == prior_matches + 1
+
+
+def test_loop_localization_does_not_use_unrelated_execution() -> None:
+    first = exchange(response=chat_resp(None, tool=("other", "{}")))
+    repeated = exchange(1, response=chat_resp(None, tool=("add", '{"a":1}')))
+    calls = repeated.response["choices"][0]["message"]["tool_calls"]
+    calls.extend([copy.deepcopy(calls[0]), copy.deepcopy(calls[0])])
+    # This event has a different argument hash and must not become an anchor.
+    findings = detect_loop(view([first, repeated], [tool_event(8, args={"a": 2})]))
+    assert len(findings) == 1 and findings[0].tool_seq is None

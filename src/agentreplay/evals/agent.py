@@ -39,9 +39,10 @@ def execute_call(
                 name, args, partial(invoke_environment, environment, name)
             )
         return {"result": result}
+    except ToolReplayedError as error:
+        return {"error": error.original_error}
     except (
         EnvironmentError,
-        ToolReplayedError,
         ValueError,
         TypeError,
         KeyError,
