@@ -1,0 +1,282 @@
+{
+  "date": "2026-11-23",
+  "method": "Solutions reasoned from instructions, initial state, tool contracts, and relevant corpus documents before reading per-task verifier expectations. Not an independent human hand-solve.",
+  "review_type": "ai_assisted_not_human",
+  "reviewer": "codex-ai",
+  "rows": [
+    {
+      "final_answer": "{\"result\": 25}",
+      "final_state": {
+        "seed": 1822656437
+      },
+      "reasoning": "Apply operations in order; intermediate values [20, 25]. Conversion m to cm multiplies by 100 when requested.",
+      "solvable": true,
+      "task_id": "calc-016"
+    },
+    {
+      "final_answer": "{\"result\": 3097}",
+      "final_state": {
+        "seed": 501204574
+      },
+      "reasoning": "Apply operations in order; intermediate values [23, 31, 3100, 3097]. Conversion m to cm multiplies by 100 when requested.",
+      "solvable": true,
+      "task_id": "calc-025"
+    },
+    {
+      "final_answer": "{\"result\": 3606}",
+      "final_state": {
+        "seed": 162000615
+      },
+      "reasoning": "Apply operations in order; intermediate values [14, 18, 1800, 1798, 1804, 3608, 3606]. Conversion m to cm multiplies by 100 when requested.",
+      "solvable": true,
+      "task_id": "calc-033"
+    },
+    {
+      "final_answer": "{\"result\": 9566}",
+      "final_state": {
+        "seed": 694203441
+      },
+      "reasoning": "Apply operations in order; intermediate values [3, 12, 1200, 1191, 1196, 9568, 9566]. Conversion m to cm multiplies by 100 when requested.",
+      "solvable": true,
+      "task_id": "calc-037"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "notes/readme.txt": "Fixture seed 523945328\nPreserve this file.\n",
+        "reports/part-0.txt": "Batch 285\nstatus: ready\n"
+      },
+      "reasoning": "Write each specified part file with exact newlines and preserve the seeded notes/readme.txt. All paths are normalized relative paths, without file/directory collisions.",
+      "solvable": true,
+      "task_id": "files-002"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "notes/readme.txt": "Fixture seed 715742497\nPreserve this file.\n",
+        "reports/part-0.txt": "Batch 861\nstatus: ready\n"
+      },
+      "reasoning": "Write each specified part file with exact newlines and preserve the seeded notes/readme.txt. All paths are normalized relative paths, without file/directory collisions.",
+      "solvable": true,
+      "task_id": "files-011"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "notes/readme.txt": "Fixture seed 701316441\nPreserve this file.\n",
+        "reports/part-0.txt": "Batch 551\nstatus: ready\n",
+        "reports/part-1.txt": "Batch 988\nstatus: ready\n",
+        "reports/part-2.txt": "Batch 582\nstatus: ready\n"
+      },
+      "reasoning": "Write each specified part file with exact newlines and preserve the seeded notes/readme.txt. All paths are normalized relative paths, without file/directory collisions.",
+      "solvable": true,
+      "task_id": "files-028"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "notes/readme.txt": "Fixture seed 2094905240\nPreserve this file.\n",
+        "reports/part-0.txt": "Batch 797\nstatus: ready\n",
+        "reports/part-1.txt": "Batch 436\nstatus: ready\n",
+        "reports/part-2.txt": "Batch 465\nstatus: ready\n"
+      },
+      "reasoning": "Write each specified part file with exact newlines and preserve the seeded notes/readme.txt. All paths are normalized relative paths, without file/directory collisions.",
+      "solvable": true,
+      "task_id": "files-032"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "baseline": 322887709,
+        "item-0": {
+          "quantity": 72,
+          "tag": "green"
+        }
+      },
+      "reasoning": "Set the explicitly named item keys and values in order; preserve baseline unless the final instruction deletes it. Other keys stay unchanged.",
+      "solvable": true,
+      "task_id": "kv-003"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "baseline": 396749397,
+        "item-0": {
+          "quantity": 76,
+          "tag": "red"
+        }
+      },
+      "reasoning": "Set the explicitly named item keys and values in order; preserve baseline unless the final instruction deletes it. Other keys stay unchanged.",
+      "solvable": true,
+      "task_id": "kv-004"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "item-0": {
+          "quantity": 45,
+          "tag": "green"
+        },
+        "item-1": {
+          "quantity": 39,
+          "tag": "blue"
+        }
+      },
+      "reasoning": "Set the explicitly named item keys and values in order; preserve baseline unless the final instruction deletes it. Other keys stay unchanged.",
+      "solvable": true,
+      "task_id": "kv-025"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "item-0": {
+          "quantity": 1,
+          "tag": "blue"
+        },
+        "item-1": {
+          "quantity": 43,
+          "tag": "red"
+        },
+        "item-2": {
+          "quantity": 51,
+          "tag": "blue"
+        },
+        "item-3": {
+          "quantity": 79,
+          "tag": "green"
+        },
+        "item-4": {
+          "quantity": 9,
+          "tag": "green"
+        }
+      },
+      "reasoning": "Set the explicitly named item keys and values in order; preserve baseline unless the final instruction deletes it. Other keys stay unchanged.",
+      "solvable": true,
+      "task_id": "kv-040"
+    },
+    {
+      "final_answer": "{\"codes\": [\"C89466\"]}",
+      "final_state": {},
+      "reasoning": "Match each literal station token to its corpus document and read the access code; preserve station order rather than document sort order.",
+      "solvable": true,
+      "task_id": "search-015"
+    },
+    {
+      "final_answer": "{\"codes\": [\"C60358\", \"C43977\", \"C24994\"]}",
+      "final_state": {},
+      "reasoning": "Match each literal station token to its corpus document and read the access code; preserve station order rather than document sort order.",
+      "solvable": true,
+      "task_id": "search-020"
+    },
+    {
+      "final_answer": "{\"codes\": [\"C32551\", \"C68458\", \"C87803\"]}",
+      "final_state": {},
+      "reasoning": "Match each literal station token to its corpus document and read the access code; preserve station order rather than document sort order.",
+      "solvable": true,
+      "task_id": "search-024"
+    },
+    {
+      "final_answer": "{\"codes\": [\"C23348\", \"C37704\", \"C26295\"]}",
+      "final_state": {},
+      "reasoning": "Match each literal station token to its corpus document and read the access code; preserve station order rather than document sort order.",
+      "solvable": true,
+      "task_id": "search-032"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "T0001": {
+          "assignee": null,
+          "id": "T0001",
+          "priority": "normal",
+          "status": "open",
+          "title": "Baseline 513882970"
+        },
+        "T0002": {
+          "assignee": "Alex",
+          "id": "T0002",
+          "priority": "normal",
+          "status": "resolved",
+          "title": "Inspect pump 904"
+        }
+      },
+      "reasoning": "Create sequential IDs beginning T0002. Assign during open-to-in_progress transition, then resolve. Repeat separately for the second ticket if present; preserve T0001 and never modify a resolved ticket.",
+      "solvable": true,
+      "task_id": "tickets-017"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "T0001": {
+          "assignee": null,
+          "id": "T0001",
+          "priority": "normal",
+          "status": "open",
+          "title": "Baseline 298462033"
+        },
+        "T0002": {
+          "assignee": "Sam",
+          "id": "T0002",
+          "priority": "high",
+          "status": "resolved",
+          "title": "Inspect pump 909"
+        }
+      },
+      "reasoning": "Create sequential IDs beginning T0002. Assign during open-to-in_progress transition, then resolve. Repeat separately for the second ticket if present; preserve T0001 and never modify a resolved ticket.",
+      "solvable": true,
+      "task_id": "tickets-026"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "T0001": {
+          "assignee": null,
+          "id": "T0001",
+          "priority": "normal",
+          "status": "open",
+          "title": "Baseline 1116832238"
+        },
+        "T0002": {
+          "assignee": "Riley",
+          "id": "T0002",
+          "priority": "high",
+          "status": "resolved",
+          "title": "Inspect pump 566"
+        }
+      },
+      "reasoning": "Create sequential IDs beginning T0002. Assign during open-to-in_progress transition, then resolve. Repeat separately for the second ticket if present; preserve T0001 and never modify a resolved ticket.",
+      "solvable": true,
+      "task_id": "tickets-031"
+    },
+    {
+      "final_answer": "Done",
+      "final_state": {
+        "T0001": {
+          "assignee": null,
+          "id": "T0001",
+          "priority": "normal",
+          "status": "open",
+          "title": "Baseline 1530190714"
+        },
+        "T0002": {
+          "assignee": "Alex",
+          "id": "T0002",
+          "priority": "normal",
+          "status": "resolved",
+          "title": "Inspect pump 593"
+        },
+        "T0003": {
+          "assignee": "Sam",
+          "id": "T0003",
+          "priority": "normal",
+          "status": "resolved",
+          "title": "Inspect pump 489"
+        }
+      },
+      "reasoning": "Create sequential IDs beginning T0002. Assign during open-to-in_progress transition, then resolve. Repeat separately for the second ticket if present; preserve T0001 and never modify a resolved ticket.",
+      "solvable": true,
+      "task_id": "tickets-034"
+    }
+  ],
+  "tasks_version_sha256": "a84d51fb1a95bff5587ec8a2b18543c9d15c41211bc1765a38e9483d6f095ae0"
+}
