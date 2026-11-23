@@ -2416,3 +2416,45 @@ Construct fake or real wrapped processes only when the server requests an isolat
 ## M10: CI and documentation
 
 No Python functions were added or changed. The CI workflow installs the package in clean Python 3.10–3.12 environments, runs Ruff and the existing offline test suite, checks the golden traces with the installed executable, and compares an exported trace to its original bytes. README and DESIGN document the verified usage, format freeze, and pending independent owner review; historical implementation notes moved to docs/MILESTONES.md.
+
+## Release hardening
+
+### `detectors._loop_tool_seq`
+
+Finds an observable execution associated with the first call in a detected loop. It keeps the directly matched event when present, otherwise uses a unique earlier execution with the same signature; ambiguity stays unresolved so localization does not rely on hidden fault labels.
+
+### `scripts.verify_release.verify_sources`
+
+Runs current agent code against archived source responses and reruns original loop fault plans, recording derived runs separately. It compares source fidelity explicitly and delegates rates and injected scoring to stats.py so this follow-up cannot be confused with the unchanged live benchmark.
+
+### `scripts.verify_release.main`
+
+Validates the source cohort and unused destination paths, creates a consistent backup, and writes the follow-up report with both code provenances. It fails without overwriting existing artifacts and returns a failed check when source fidelity or loop localization fails.
+
+### `test_natural_tool_error_recovery_replays_identical_requests`
+
+Records an agent recovering from division by zero and then replays the same trajectory for both reference versions. It requires the answer and source-sized request history to match, retains the real tool-error finding, and forbids tool execution on replay.
+
+### `test_reference_tool_error_text_survives_record_replay`
+
+Exercises the actual tool recorder with six supported exception families, including KeyError's quoted string representation. It requires record and replay to return identical agent-facing error messages rather than adding the replay wrapper's type.
+
+### Recovery and forbidden-execution test helpers
+
+The `recovery` mock returns a failed tool call, a successful recovery call, and a final answer while inspecting actual messages. The `fail` helper raises a chosen original exception; `forbidden` helpers fail immediately if replay invokes an environment tool, proving the tests use recorded outcomes.
+
+### `test_loop_after_batch_uses_only_unique_observed_execution`
+
+Places distinct calls between a possible execution anchor and a repeated emitted batch. It tests zero, one, and multiple matching executions and both sides of the repetition threshold, preserving presence rules while checking conservative localization.
+
+### `test_loop_localization_does_not_use_unrelated_execution`
+
+Provides an execution whose tool name matches but argument hash differs. The detected loop must keep no tool-event association, preventing unrelated actions from becoming fabricated locations.
+
+### `test_release_followup_preserves_source_and_localizes_batched_loop`
+
+Creates an offline cohort with both loop plan targets, then invokes the follow-up command against a new backup. It verifies fidelity, localized scoring, original-source preservation, and refusal to overwrite the generated report.
+
+### `test_release_followup_rejects_missing_cohort_before_copy`
+
+Rejects empty or unknown source cohorts before creating a destination database. This prevents a failed configuration from looking like a valid verification artifact.

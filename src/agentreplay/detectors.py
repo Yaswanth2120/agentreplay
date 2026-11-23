@@ -138,6 +138,20 @@ def _occurrences(view: RunView) -> list[dict[str, Any]]:
     ]
 
 
+def _loop_tool_seq(calls: list[dict[str, Any]], start: int) -> int | None:
+    first = calls[start]
+    if first["tool_seq"] is not None:
+        return first["tool_seq"]
+    # A repeated emitted call may never execute (for example, exhausted replay).
+    # Associate only an unambiguous earlier execution, not a guessed causal event.
+    earlier = {
+        call["tool_seq"]
+        for call in calls[:start]
+        if call["signature"] == first["signature"] and call["tool_seq"] is not None
+    }
+    return next(iter(earlier)) if len(earlier) == 1 else None
+
+
 def detect_loop(view: RunView) -> list[Finding]:
     calls = _occurrences(view)
     config = view.config
@@ -167,7 +181,7 @@ def detect_loop(view: RunView) -> list[Finding]:
                             ],
                         },
                         exchange_seq=block[-1]["exchange_seq"],
-                        tool_seq=block[0]["tool_seq"],
+                        tool_seq=_loop_tool_seq(calls, end - size),
                     )
                 ]
     return []

@@ -373,3 +373,118 @@ def test_v2_skipped_execution_is_reported_as_replay_divergence() -> None:
         asyncio.run(exercise())
     finally:
         store.close()
+
+
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_natural_tool_error_recovery_replays_identical_requests(
+    store: TraceStore, version: str
+) -> None:
+    task = TASKS[0]
+    requests: list[dict[str, Any]] = []
+
+    def recovery(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        requests.append(body)
+        results = [m for m in body["messages"] if m["role"] == "tool"]
+        if not results:
+            return reply(
+                {
+                    "content": None,
+                    "tool_calls": [
+                        tool_call("calculate", {"op": "divide", "a": 1, "b": 0})
+                    ],
+                }
+            )
+        error = json.loads(results[0]["content"])["error"]
+        assert error.startswith("EnvironmentError:") and "division by zero" in error
+        assert "ToolReplayedError" not in error
+        if len(results) == 1:
+            return reply(
+                {
+                    "content": None,
+                    "tool_calls": [
+                        tool_call("calculate", {"op": "add", "a": 2, "b": 3}, 1)
+                    ],
+                }
+            )
+        assert json.loads(results[-1]["content"]) == {"result": 5}
+        return reply({"content": '{"result": 5}'})
+
+    async def exercise() -> None:
+        record = create_app(store, "record", transport=httpx.MockTransport(recovery))
+        trace_id = record.state.trace_id
+        for app, mode in [(record, "record"), (None, "replay")]:
+            app = app or create_app(store, "replay", trace_id=trace_id)
+            run_id = app.state.run_id
+            recorder = ToolRecorder(
+                store,
+                trace_id,
+                mode,
+                faults=app.state.runs.faults(run_id),
+                session=app.state.runs.session(run_id) if mode == "replay" else None,
+            )
+            environment = make_environment(task.env, task.seed)
+
+            def forbidden(name: str, args: dict[str, Any]) -> None:
+                pytest.fail("executed tool during error replay")
+
+            if mode == "replay":
+                environment.call = forbidden
+            async with (
+                app.router.lifespan_context(app),
+                httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=app), base_url="http://proxy"
+                ) as client,
+            ):
+                answer = await run_agent(
+                    client,
+                    task,
+                    environment,
+                    version=version,
+                    recorder=recorder,
+                    run_id=run_id,
+                )
+                assert answer == '{"result": 5}'
+                finished = await client.post(
+                    f"/_agentreplay/runs/{run_id}/finish", json={}
+                )
+                assert finished.status_code == 200
+                findings = finished.json()["findings"]
+                assert [f["kind"] for f in findings] == ["tool_error"]
+                assert findings[0]["tool_seq"] == 0
+        assert len(requests) == 3
+        assert len(store.tool_events(trace_id)) == 2
+        assert len(store.exchanges(trace_id)) == 3
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [EnvironmentError, ValueError, TypeError, KeyError, ArithmeticError, OSError],
+)
+def test_reference_tool_error_text_survives_record_replay(
+    store: TraceStore, error_type: type[Exception]
+) -> None:
+    from agentreplay.schema import Trace
+
+    trace = store.create_trace(Trace(name="errors"))
+    environment = make_environment("calc", 0)
+
+    def fail(name: str, args: dict[str, Any]) -> None:
+        raise error_type("original failure")
+
+    environment.call = fail
+    call = tool_call("calculate", {"op": "add", "a": 1, "b": 2})
+    source = execute_call(environment, call, ToolRecorder(store, trace.id, "record"))
+    assert source == {
+        "error": f"{error_type.__name__}: {error_type('original failure')}"
+    }
+
+    def forbidden(name: str, args: dict[str, Any]) -> None:
+        pytest.fail("tool executed on replay")
+
+    environment.call = forbidden
+    recorder = ToolRecorder(store, trace.id, "replay")
+    assert execute_call(environment, call, recorder) == source
+    assert recorder.session.finish("completed").outcome == "completed"

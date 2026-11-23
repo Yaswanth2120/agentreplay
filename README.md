@@ -77,7 +77,7 @@ Qwen/Qwen3-8B, 200 frozen tasks across five environments, three trials per versi
 | regression_divergence | 0.325000 | 195 | 600 | [0.288739, 0.363488] |
 | paired.success_difference | -0.278333 | — | 600 | [-0.315000, -0.243333] |
 
-Repeat determinism compares two replays with each other, not with the original execution. The clean false-positive rate is conditional on successful, finding-free source runs. Natural tool errors can change the next replay request because the reference agent includes the `ToolReplayedError` wrapper in its tool message. Loop detection can find the loop but miss its injected target sequence (755 TP, 167 FP, 167 FN across 922 injected loop faults). These issues remain visible in the original measurements.
+Repeat determinism compares two replays with each other, not with the original execution. The clean false-positive rate is conditional on successful, finding-free source runs. In the original M9 runner, natural tool errors could change the next replay request because the reference agent included the `ToolReplayedError` wrapper in its tool message. The original loop detector could find the loop but miss its injected target sequence (755 TP, 167 FP, 167 FN across 922 injected loop faults). These original measurements remain unchanged. The release-hardening branch normalizes replayed error text and associates repeated calls with a unique earlier matching execution; it never guesses among multiple matching executions or reads fault labels. Follow-up checks are documented in [release review](docs/RELEASE.md).
 
 The owner must hand-solve 20 tasks in [REVIEW.md](src/agentreplay/evals/REVIEW.md) and blindly label the [100 selected natural runs](reports/live/manual-sample.json). Until then these results are not a validated benchmark and no significance claim is made. [Archive receipts](reports/live/README.md) document the verified local backup; raw trace data is kept outside Git.
 
@@ -116,6 +116,7 @@ Given the same trace, the same agent code, and an agent that is deterministic gi
 - [x] M9 live recordings and replay/fault evaluation; verified database and golden exports saved off the GPU.
 - [ ] Owner review of 20 tasks and blind labels on 100 natural runs.
 - [x] M10 clean-clone CI matrix (Python 3.10–3.12) and fresh Python 3.12 quickstart verified.
+- [ ] Release-hardening fixes verified against archived traces and CI.
 - [ ] Final release review and `v0.1.0` tag.
 
 Development uses feature branches and pull requests. Run `make test`, `make lint`, and `make check-golden` before submitting changes. CI installs the package and runs the same offline checks on Python 3.10, 3.11, and 3.12; tests block real socket connections. Dependency installation itself requires network access. Only the dependencies declared in `pyproject.toml` are required; vLLM is external to the library.
